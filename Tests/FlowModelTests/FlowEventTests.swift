@@ -86,8 +86,7 @@ import Testing
         let event: FlowEvent = .flowOpened(try opened())
         let data = try FlowJSON.encoder.encode(event)
         let text = String(data: data, encoding: .utf8)!
-        #expect(text.contains("1752800000.125"))
-        #expect(text.contains("1752800000.125"))
+        #expect(text.contains(".125Z"))   // ISO8601 with fractional seconds
     }
 
     @Test func allCasesRoundTrip() throws {

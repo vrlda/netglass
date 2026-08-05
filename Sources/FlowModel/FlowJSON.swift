@@ -6,7 +6,7 @@ public enum FlowJSON {
         encoder.outputFormatting = [.sortedKeys]
         encoder.dateEncodingStrategy = .custom { date, container in
             var c = container.singleValueContainer()
-            try c.encode(date.timeIntervalSince1970)
+            try c.encode(date.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
         }
         return encoder
     }
@@ -15,8 +15,12 @@ public enum FlowJSON {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
-            let seconds = try container.decode(Double.self)
-            return Date(timeIntervalSince1970: seconds)
+            let string = try container.decode(String.self)
+            guard let date = try? Date(string, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container, debugDescription: "invalid ISO8601 date: \(string)")
+            }
+            return date
         }
         return decoder
     }
