@@ -58,7 +58,8 @@ import Testing
     }
 
     @Test func absentRowClosesAfterThreeMisses() throws {
-        let tracker = FlowSessionTracker()
+        let fixed = Date(timeIntervalSince1970: 1_752_800_000)
+        let tracker = FlowSessionTracker(now: { fixed })
         _ = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
         _ = tracker.ingest([], identityForPID: { identity(pid: $0) })   // miss 1
         _ = tracker.ingest([], identityForPID: { identity(pid: $0) })   // miss 2
@@ -67,7 +68,15 @@ import Testing
         guard case .flowClosed(let closed) = third[0] else {
             Issue.record("expected flowClosed, got \(third[0])"); return
         }
-        _ = closed.endedAt  // present
+        #expect(closed.endedAt == fixed)
+    }
+
+    @Test func injectedClockDrivesTimestamps() throws {
+        let fixed = Date(timeIntervalSince1970: 1_752_800_000)
+        let tracker = FlowSessionTracker(now: { fixed })
+        let events = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
+        guard case .flowOpened(let opened) = events[0] else { Issue.record("expected flowOpened"); return }
+        #expect(opened.startedAt == fixed)
     }
 
     @Test func counterResetReopensSession() throws {
@@ -89,6 +98,43 @@ import Testing
         guard case .flowClosed = changed[0] else { Issue.record("expected close"); return }
         guard case .flowOpened(let reopened) = changed[1] else { Issue.record("expected reopen"); return }
         #expect(reopened.pid == 9217)
+        #expect(reopened.process?.executablePath == "/usr/bin/other")
+    }
+
+    @Test func reappearingFlowKeepsSession() throws {
+        let tracker = FlowSessionTracker()
+        let openedEvents = tracker.ingest([row(bytesIn: 100, bytesOut: 200)],
+                                          identityForPID: { identity(pid: $0) })
+        guard case .flowOpened(let opened) = openedEvents[0] else {
+            Issue.record("expected flowOpened"); return
+        }
+        _ = tracker.ingest([], identityForPID: { identity(pid: $0) })   // miss 1
+        let reappeared = tracker.ingest([row(bytesIn: 100, bytesOut: 200)],
+                                        identityForPID: { identity(pid: $0) })
+        #expect(reappeared.isEmpty)   // session survives misses, no close/reopen
+        let updated = tracker.ingest([row(bytesIn: 150, bytesOut: 250)],
+                                     identityForPID: { identity(pid: $0) })
+        #expect(updated.count == 1)
+        guard case .flowUpdated(let counters) = updated[0] else {
+            Issue.record("expected flowUpdated"); return
+        }
+        #expect(counters.flowID == opened.flowID)
+    }
+
+    @Test func rowsMissingFieldsSkipped() {
+        let tracker = FlowSessionTracker()
+        let badRows = [
+            NettopRow(processName: "A", pid: nil, connID: nil, state: nil, interface: nil,
+                      bytesIn: 1, bytesOut: 1, local: local, remote: remote, transport: .tcp),
+            NettopRow(processName: "B", pid: 1, connID: nil, state: nil, interface: nil,
+                      bytesIn: 1, bytesOut: 1, local: nil, remote: remote, transport: .tcp),
+            NettopRow(processName: "C", pid: 2, connID: nil, state: nil, interface: nil,
+                      bytesIn: 1, bytesOut: 1, local: local, remote: nil, transport: .tcp),
+            NettopRow(processName: "D", pid: 3, connID: nil, state: nil, interface: nil,
+                      bytesIn: 1, bytesOut: 1, local: local, remote: remote, transport: nil),
+        ]
+        let events = tracker.ingest(badRows, identityForPID: { identity(pid: $0) })
+        #expect(events.isEmpty)
     }
 
     @Test func distinctEndpointsAreDistinctSessions() {

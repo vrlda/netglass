@@ -1,6 +1,7 @@
 import Foundation
 import FlowModel
 
+// Call from the polling run loop only; not thread-safe. Revisit if callers become concurrent (M2+).
 public final class FlowSessionTracker: @unchecked Sendable {
     private struct SessionKey: Hashable {
         let pid: Int32
@@ -32,6 +33,14 @@ public final class FlowSessionTracker: @unchecked Sendable {
         var seen: Set<SessionKey> = []
         let currentTime = now()
 
+        var resolvedPIDs: Set<Int32> = []
+        var identities: [Int32: ProcessIdentity?] = [:]
+        for row in rows {
+            guard let pid = row.pid, !resolvedPIDs.contains(pid) else { continue }
+            resolvedPIDs.insert(pid)
+            identities[pid] = identityForPID(pid)
+        }
+
         for row in rows {
             guard let pid = row.pid,
                   let local = row.local,
@@ -40,11 +49,17 @@ public final class FlowSessionTracker: @unchecked Sendable {
 
             let key = SessionKey(pid: pid, transport: transport, local: local, remote: remote)
             seen.insert(key)
-            let identity = identityForPID(pid)
+            let identity = identities[pid] ?? nil
             let path = identity?.executablePath
 
             if let session = sessions[key] {
-                if session.executablePath != path || hasCounterReset(row, session) {
+                let identityChanged: Bool
+                if let oldPath = session.executablePath, let newPath = path {
+                    identityChanged = oldPath != newPath
+                } else {
+                    identityChanged = false
+                }
+                if identityChanged || hasCounterReset(row, session) {
                     events.append(.flowClosed(FlowEvent.FlowClosed(flowID: session.flowID, endedAt: currentTime)))
                     let fresh = makeSession(pid: pid, transport: transport, local: local,
                                             remote: remote, path: path, row: row, at: currentTime)
@@ -99,8 +114,8 @@ public final class FlowSessionTracker: @unchecked Sendable {
     }
 
     private func hasCounterReset(_ row: NettopRow, _ session: FlowSession) -> Bool {
-        (row.bytesOut ?? 0) < session.lastBytesSent
-            || (row.bytesIn ?? 0) < session.lastBytesReceived
+        guard let bytesOut = row.bytesOut, let bytesIn = row.bytesIn else { return false }
+        return bytesOut < session.lastBytesSent || bytesIn < session.lastBytesReceived
     }
 
     private func makeSession(pid: Int32, transport: TransportProtocol,
