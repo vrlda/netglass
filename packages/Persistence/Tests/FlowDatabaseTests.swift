@@ -115,6 +115,26 @@ import Testing
         db.close()
     }
 
+    @Test func orphanedFlowsClosedOnRelaunch() throws {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("netglass-db-\(UUID().uuidString).sqlite").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        // Session 1 leaves a flow open (killed, no flowClosed event).
+        var db = try FlowDatabase(path: path)
+        try db.ingest([.flowOpened(try opened())])
+        db.close()
+
+        // Session 2 bootstrap: the old session's still-NULL-ended flows must
+        // get an ended_at so history never shows them as "open" again.
+        db = try FlowDatabase(path: path)
+        try db.closeOrphanedFlows(endedAt: Date(timeIntervalSince1970: 1_752_800_999))
+        let flows = try db.flows()
+        #expect(flows.count == 1)
+        #expect(flows[0].endedAt == Date(timeIntervalSince1970: 1_752_800_999))
+        db.close()
+    }
+
     @Test func ingestAfterCloseThrows() throws {
         let db = try FlowDatabase(path: ":memory:")
         db.close()

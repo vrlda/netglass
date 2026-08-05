@@ -115,6 +115,13 @@ public final class FlowDatabase: @unchecked Sendable {
         return count
     }
 
+    /// Closes any flows still marked open — called at app bootstrap so a fresh
+    /// observation session doesn't leave the previous session's flows dangling.
+    public func closeOrphanedFlows(endedAt: Date) throws {
+        try db.exec("UPDATE flows SET ended_at = ? WHERE ended_at IS NULL",
+                    [.double(endedAt.timeIntervalSince1970)])
+    }
+
     public func close() { db.close() }
 
     private func insert(_ opened: FlowEvent.FlowOpened) throws {

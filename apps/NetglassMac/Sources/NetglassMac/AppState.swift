@@ -21,6 +21,12 @@ public final class AppState: ObservableObject {
             db = nil
         }
         self.database = db
+        // A fresh observation session re-opens still-alive flows with new IDs;
+        // close the previous session's dangling rows so history doesn't show
+        // the same physical connection twice as "open".
+        if let db {
+            try? db.closeOrphanedFlows(endedAt: Date())
+        }
         self.liveModel = LiveConnectionsModel(sampler: Self.defaultSampler(), database: db)
     }
 

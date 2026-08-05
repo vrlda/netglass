@@ -96,8 +96,12 @@ struct HistoryView: View {
             let all = try HistoryQuery.search(database: db, text: searchText, limit: Int.max)
             let panel = NSSavePanel()
             panel.nameFieldStringValue = "netglass-history.json"
-            panel.allowedContentTypes = [.json]
-            if panel.runModal() == .OK, let url = panel.url {
+            panel.allowedContentTypes = [.json, .commaSeparatedText]
+            panel.canSelectHiddenExtension = true
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            if url.pathExtension.lowercased() == "csv" {
+                try Exporter.exportCSV(all, to: url)
+            } else {
                 try Exporter.exportJSON(all, to: url)
             }
         } catch { lastError = "export failed: \(error)" }
