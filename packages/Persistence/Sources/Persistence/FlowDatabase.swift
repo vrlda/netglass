@@ -1,7 +1,7 @@
 import Foundation
 import FlowModel
 
-public struct StoredFlow: Equatable, Sendable {
+public struct StoredFlow: Equatable, Sendable, Codable {
     public let flowID: UUID
     public let processPath: String
     public let bundleIdentifier: String?
@@ -14,6 +14,10 @@ public struct StoredFlow: Equatable, Sendable {
     public let endedAt: Date?
     public let bytesSent: UInt64
     public let bytesReceived: UInt64
+}
+
+extension StoredFlow: Identifiable {
+    public var id: UUID { flowID }
 }
 
 public final class FlowDatabase: @unchecked Sendable {
