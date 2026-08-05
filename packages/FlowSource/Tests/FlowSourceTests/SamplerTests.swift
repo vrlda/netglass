@@ -29,12 +29,9 @@ import Testing
             resolver: StubResolver())
         let first = try sampler.sample()
         let second = try sampler.sample()
-        // same fixtures → same flowIDs for still-present flows; second sample has no new opens
-        let secondOpened = second.compactMap { event -> UUID? in
-            if case .flowOpened(let opened) = event { return opened.flowID }
-            return nil
-        }
-        #expect(secondOpened.isEmpty)
+        // same fixtures → identical rows; tracker sees no new opens, no counter
+        // changes, no misses → second tick emits zero events deterministically
+        #expect(second.isEmpty)
         #expect(first.count > 0)
     }
 

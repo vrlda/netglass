@@ -23,7 +23,9 @@ public struct ProcessNettopClient: NettopClient {
         process.standardOutput = output
         process.standardError = FileHandle.standardError
 
-        var captured = Data()
+        // happens-before via drain group wait(): the queue block completes before
+        // wait() returns, so cross-thread access below needs no synchronization.
+        nonisolated(unsafe) var captured = Data()
         let queue = DispatchQueue(label: "netglass.nettop-drain")
         let drain = DispatchGroup()
         drain.enter()
@@ -31,7 +33,12 @@ public struct ProcessNettopClient: NettopClient {
             captured = output.fileHandleForReading.readDataToEndOfFile()
             drain.leave()
         }
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            output.fileHandleForWriting.closeFile()   // unblock the drain if run failed
+            throw error
+        }
         process.waitUntilExit()
         drain.wait()
         guard process.terminationStatus == 0 else {
@@ -52,7 +59,9 @@ public struct ProcessLsofClient: LsofClient {
         process.standardOutput = output
         process.standardError = FileHandle.standardError
 
-        var captured = Data()
+        // happens-before via drain group wait(): the queue block completes before
+        // wait() returns, so cross-thread access below needs no synchronization.
+        nonisolated(unsafe) var captured = Data()
         let queue = DispatchQueue(label: "netglass.lsof-drain")
         let drain = DispatchGroup()
         drain.enter()
@@ -60,7 +69,12 @@ public struct ProcessLsofClient: LsofClient {
             captured = output.fileHandleForReading.readDataToEndOfFile()
             drain.leave()
         }
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            output.fileHandleForWriting.closeFile()   // unblock the drain if run failed
+            throw error
+        }
         process.waitUntilExit()
         drain.wait()
         guard process.terminationStatus == 0 else {

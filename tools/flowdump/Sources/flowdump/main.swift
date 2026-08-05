@@ -28,7 +28,9 @@ do {
     print(usage())
     exit(2)
 } catch {
-    if (error as? CocoaError)?.code == .fileWriteUnknown { exit(0) }   // EPIPE on stdout write
+    let underlying = (error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError
+    let isBrokenPipe = underlying?.domain == NSPOSIXErrorDomain && underlying?.code == Int(EPIPE)
+    if isBrokenPipe { exit(0) }
     try? FileHandle.standardError.write(contentsOf: Data("error: \(error)\n".utf8))
     exit(1)
 }
