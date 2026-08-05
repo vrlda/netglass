@@ -1,4 +1,5 @@
 import Foundation
+import FlowSource
 import Persistence
 
 @MainActor
@@ -15,5 +16,13 @@ public final class AppState: ObservableObject {
 
     public static nonisolated func databaseURL(in directory: URL) -> URL {
         directory.appendingPathComponent("Netglass").appendingPathComponent("history.sqlite")
+    }
+
+    /// The app's sampling pipeline: real nettop/lsof subprocesses plus a
+    /// process resolver walking proc_pidpath.
+    public static nonisolated func defaultSampler() -> Sampler {
+        Sampler(nettopClient: ProcessNettopClient(),
+                lsofClient: ProcessLsofClient(),
+                resolver: ProcessResolver())
     }
 }

@@ -44,9 +44,10 @@ public final class LiveConnectionsModel: ObservableObject {
         }
     }
 
-    /// Cancels the tick loop. Residual overlap: an in-flight detached sample
-    /// (see runOnce) is not awaited, so a start() immediately after stop() can
-    /// observe one late apply; full closure is M3.
+    /// Cancels the tick loop. Residual overlap: one in-flight detached sample
+    /// is not awaited, so it may run to completion concurrently with the next
+    /// tick's sample — a data race on the same non-thread-safe Sampler (shared
+    /// FlowSessionTracker) plus duplicate subprocesses. Full closure is M3.
     public func stop() {
         tickTask?.cancel()
         tickTask = nil
@@ -58,6 +59,9 @@ public final class LiveConnectionsModel: ObservableObject {
         let sampler = self.sampler   // read on main actor; Sampler is @unchecked Sendable
         let events: [FlowEvent]
         do {
+            // Detached task is unstructured and unreferenced: if sample()
+            // hangs, cancellation cannot interrupt it — a zombie task that
+            // runs to completion. Accepted M3 residual.
             events = try await Task.detached(priority: .utility) { try sampler.sample() }.value
         } catch {
             return   // sampling failure: keep last-known state; retry next tick
