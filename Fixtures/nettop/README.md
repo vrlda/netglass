@@ -15,8 +15,10 @@ fixture (`synthetic.txt`) mirrors it for deterministic CI tests.
 ## Capture command (final)
 
 ```bash
-/usr/bin/nettop -L 1 -J bytes_in,bytes_out,interface,state,time > Fixtures/nettop/capture-1.txt
+/usr/bin/nettop -n -L 1 -J bytes_in,bytes_out,interface,state,time > Fixtures/nettop/capture-1.txt
 ```
+
+(`-n` keeps addresses numeric — required so connection rows can join with `lsof -i -n -P` socket rows on the endpoint pair. Without `-n`, nettop resolves hostnames into the provenance token.)
 
 `scripts/fetch-nettop-fixture.sh` wraps this and verifies the first line is a
 `time,,` CSV header before reporting success (nettop prints usage text and still
@@ -76,7 +78,9 @@ endpoint pair. Everything before the first space is the protocol; the rest is
   - Wildcard: `*:*`, `*.5353` (bound), `*.*` (unbound; `udp6` uses `.` throughout)
   - Hostnames appear when name resolution succeeds (`one.one.one.one:443`,
     `localhost:49618`, `cdn-185-199-111-133.github.com:443`) — resolution is on
-    by default and works without root; numeric IPs appear otherwise.
+    by default and works without root; numeric IPs appear otherwise. The
+    regenerated fixture (`-n`) contains only numeric addresses; the parser skips
+    hostname remotes defensively (they cannot join lsof rows).
   - **Scoped IPv6 `%zone` observed** (`fe80::7ca2:20ff:fe4d:277%awdl0.52214`,
     awdl0 link-local). `IPAddress` rejects `%zone` input by design
     (`19f9edb`), so the parser must skip such rows — exactly 1 row in this capture.
