@@ -22,13 +22,22 @@ public struct ProcessNettopClient: NettopClient {
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.standardError
+
+        var captured = Data()
+        let queue = DispatchQueue(label: "netglass.nettop-drain")
+        let drain = DispatchGroup()
+        drain.enter()
+        queue.async {
+            captured = output.fileHandleForReading.readDataToEndOfFile()
+            drain.leave()
+        }
         try process.run()
         process.waitUntilExit()
+        drain.wait()
         guard process.terminationStatus == 0 else {
             throw SamplingError.terminated(process.terminationStatus)
         }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8) ?? ""
+        return String(data: captured, encoding: .utf8) ?? ""
     }
 }
 
@@ -42,13 +51,22 @@ public struct ProcessLsofClient: LsofClient {
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.standardError
+
+        var captured = Data()
+        let queue = DispatchQueue(label: "netglass.lsof-drain")
+        let drain = DispatchGroup()
+        drain.enter()
+        queue.async {
+            captured = output.fileHandleForReading.readDataToEndOfFile()
+            drain.leave()
+        }
         try process.run()
         process.waitUntilExit()
+        drain.wait()
         guard process.terminationStatus == 0 else {
             throw SamplingError.terminated(process.terminationStatus)
         }
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8) ?? ""
+        return String(data: captured, encoding: .utf8) ?? ""
     }
 }
 

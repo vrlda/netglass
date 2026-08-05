@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import flowdump
+@testable import FlowSource
 
 @Suite struct ProcessResolverTests {
     private let resolver = ProcessResolver()

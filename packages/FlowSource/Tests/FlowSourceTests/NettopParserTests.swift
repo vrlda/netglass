@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import flowdump
+@testable import FlowSource
 
 @Suite struct NettopParserTests {
     private let parser = NettopParser()
@@ -64,10 +64,7 @@ import Testing
     }
 
     @Test func readsRealFixture() throws {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let url = try FixtureLocator.repoRoot()
             .appendingPathComponent("Fixtures/nettop/capture-1.txt")
         let text = try String(contentsOf: url, encoding: .utf8)
         let rows = parser.parse(text)

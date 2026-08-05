@@ -5,19 +5,26 @@ let package = Package(
     name: "Netglass",
     platforms: [.macOS(.v14)],
     targets: [
-        .target(name: "FlowModel"),
-        .target(
-            name: "Persistence",
-            dependencies: ["FlowModel"],
-            linkerSettings: [.linkedLibrary("sqlite3")]
-        ),
-        .executableTarget(
-            name: "flowdump",
-            dependencies: ["FlowModel", "Persistence"],
-            linkerSettings: [.linkedLibrary("proc")]
-        ),
-        .testTarget(name: "FlowModelTests", dependencies: ["FlowModel"]),
-        .testTarget(name: "PersistenceTests", dependencies: ["Persistence"]),
-        .testTarget(name: "flowdumpTests", dependencies: ["flowdump"]),
+        .target(name: "FlowModel", path: "packages/FlowModel/Sources/FlowModel"),
+        .target(name: "Persistence",
+                dependencies: ["FlowModel"],
+                path: "packages/Persistence/Sources/Persistence",
+                linkerSettings: [.linkedLibrary("sqlite3")]),
+        .target(name: "FlowSource",
+                dependencies: ["FlowModel"],
+                path: "packages/FlowSource/Sources/FlowSource",
+                linkerSettings: [.linkedLibrary("proc")]),
+        .executableTarget(name: "flowdump",
+                          dependencies: ["FlowModel", "Persistence", "FlowSource"],
+                          path: "tools/flowdump/Sources/flowdump"),
+        .testTarget(name: "FlowModelTests", dependencies: ["FlowModel"],
+                    path: "packages/FlowModel/Tests"),
+        .testTarget(name: "PersistenceTests", dependencies: ["Persistence"],
+                    path: "packages/Persistence/Tests"),
+        .testTarget(name: "FlowSourceTests",
+                    dependencies: ["FlowModel", "FlowSource"],
+                    path: "packages/FlowSource/Tests/FlowSourceTests"),
+        .testTarget(name: "flowdumpTests", dependencies: ["flowdump"],
+                    path: "tools/flowdump/Tests/flowdumpTests"),
     ]
 )

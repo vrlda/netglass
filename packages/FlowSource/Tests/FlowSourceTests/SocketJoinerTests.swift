@@ -1,7 +1,7 @@
 import Foundation
 import FlowModel
 import Testing
-@testable import flowdump
+@testable import FlowSource
 
 @Suite struct SocketJoinerTests {
     private func connection(_ transport: TransportProtocol, local: String, remote: String,
@@ -57,8 +57,7 @@ import Testing
     }
 
     @Test func joinsSyntheticFixturesEndToEnd() throws {
-        let base = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let base = try FixtureLocator.repoRoot()
         let nettopText = try String(contentsOf: base.appendingPathComponent("Fixtures/nettop/synthetic.txt"), encoding: .utf8)
         let lsofText = try String(contentsOf: base.appendingPathComponent("Fixtures/lsof/synthetic.txt"), encoding: .utf8)
         let connections = NettopParser().parse(nettopText)

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import flowdump
 @testable import FlowModel
+@testable import FlowSource
 @testable import Persistence
 
 @Suite struct CLITests {
@@ -54,10 +55,7 @@ import Testing
     }
 
     @Test func runLoopEmitsAndPersists() throws {
-        let base = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // Tests/flowdumpTests
-            .deletingLastPathComponent() // Tests
-            .deletingLastPathComponent() // repo root
+        let base = try FixtureLocator.repoRoot()
         let nettopFixture = base.appendingPathComponent("Fixtures/nettop/synthetic.txt")
         let lsofFixture = base.appendingPathComponent("Fixtures/lsof/synthetic.txt")
         let dbPath = FileManager.default.temporaryDirectory

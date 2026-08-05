@@ -1,5 +1,6 @@
 import Foundation
 import FlowModel
+import FlowSource
 import Persistence
 
 public struct CLIConfig: Sendable {

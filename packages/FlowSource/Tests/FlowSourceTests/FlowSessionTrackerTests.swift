@@ -1,7 +1,7 @@
 import Foundation
 import FlowModel
 import Testing
-@testable import flowdump
+@testable import FlowSource
 
 @Suite struct FlowSessionTrackerTests {
     private let now = Date(timeIntervalSince1970: 1_752_800_000)

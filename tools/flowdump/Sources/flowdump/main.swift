@@ -1,6 +1,9 @@
 import Foundation
 import FlowModel
+import FlowSource
 import Persistence
+
+signal(SIGPIPE, SIG_IGN)   // EPIPE on stdout write surfaces as an error, not a kill
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
@@ -25,6 +28,7 @@ do {
     print(usage())
     exit(2)
 } catch {
+    if (error as? CocoaError)?.code == .fileWriteUnknown { exit(0) }   // EPIPE on stdout write
     try? FileHandle.standardError.write(contentsOf: Data("error: \(error)\n".utf8))
     exit(1)
 }

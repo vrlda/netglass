@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import flowdump
+@testable import FlowSource
 
 @Suite struct LsofParserTests {
     private let parser = LsofParser()
@@ -44,10 +44,7 @@ import Testing
     }
 
     @Test func readsRealFixture() throws {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let url = try FixtureLocator.repoRoot()
             .appendingPathComponent("Fixtures/lsof/capture-1.txt")
         let text = try String(contentsOf: url, encoding: .utf8)
         let sockets = parser.parse(text)
