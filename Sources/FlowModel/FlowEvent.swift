@@ -55,4 +55,32 @@ public enum FlowEvent: Codable, Sendable, Equatable {
     case flowOpened(FlowOpened)
     case flowUpdated(FlowCounters)
     case flowClosed(FlowClosed)
+
+    private enum CodingKeys: String, CodingKey {
+        case flowOpened, flowUpdated, flowClosed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.flowOpened) {
+            self = .flowOpened(try container.decode(FlowOpened.self, forKey: .flowOpened))
+        } else if container.contains(.flowUpdated) {
+            self = .flowUpdated(try container.decode(FlowCounters.self, forKey: .flowUpdated))
+        } else if container.contains(.flowClosed) {
+            self = .flowClosed(try container.decode(FlowClosed.self, forKey: .flowClosed))
+        } else {
+            throw DecodingError.typeMismatch(FlowEvent.self, DecodingError.Context(
+                codingPath: decoder.codingPath,
+                debugDescription: "no flow event case present"))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .flowOpened(let payload): try container.encode(payload, forKey: .flowOpened)
+        case .flowUpdated(let payload): try container.encode(payload, forKey: .flowUpdated)
+        case .flowClosed(let payload): try container.encode(payload, forKey: .flowClosed)
+        }
+    }
 }

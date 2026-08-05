@@ -89,6 +89,17 @@ import Testing
         #expect(text.contains(".125Z"))   // ISO8601 with fractional seconds
     }
 
+    @Test func goldenWireFormat() throws {
+        let event: FlowEvent = .flowOpened(try opened())
+        let data = try FlowJSON.encoder.encode(event)
+        let text = String(data: data, encoding: .utf8)!
+        #expect(text.contains("\"flowOpened\":{"))
+        #expect(!text.contains("_0"))                       // no compiler artifact
+        #expect(text.contains("\"address\":\"192.168.1.42\""))  // IP as text
+        #expect(text.contains("\"transport\":\"tcp\""))
+        #expect(text.contains("\"startedAt\":\"2025-07-18T00:53:20.125Z\""))
+    }
+
     @Test func allCasesRoundTrip() throws {
         let cases: [FlowEvent] = [
             .flowOpened(try opened()),

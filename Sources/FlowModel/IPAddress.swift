@@ -50,6 +50,21 @@ public struct IPAddress: Codable, Hashable, Sendable, CustomStringConvertible {
 
     public var description: String { text }
 
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let text = try container.decode(String.self)
+        guard let parsed = IPAddress(text: text) else {
+            throw DecodingError.dataCorruptedError(in: container,
+                debugDescription: "invalid IP address text: \(text)")
+        }
+        self = parsed
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(text)
+    }
+
     private func render4() -> String {
         var addr = in_addr()
         withUnsafeMutableBytes(of: &addr) { $0.copyBytes(from: bytes) }
