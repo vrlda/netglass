@@ -15,5 +15,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)   // menu bar app; no Dock icon
+        appState.liveModel.start()              // sampling runs for app lifetime, not popover lifetime
     }
 }

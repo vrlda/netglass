@@ -61,8 +61,7 @@ struct LiveConnectionsView: View {
             .frame(minHeight: 220)
         }
         .frame(width: 520, height: 260)
-        .onAppear { model.start() }
-        .onDisappear { model.stop() }
+        .onAppear { model.start() }   // no-op guard; loop is app-lifetime (AppDelegate)
         .sheet(isPresented: detailPresented) {
             if let flow = model.flows.first(where: { $0.flowID == selection }) {
                 ProcessDetailView(flow: flow)
