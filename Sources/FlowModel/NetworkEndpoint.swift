@@ -1,7 +1,7 @@
 import Foundation
 
 public enum TransportProtocol: String, Codable, Sendable, Hashable {
-    case tcp, udp, icmp, other
+    case tcp, udp, icmp, quic, other
 }
 
 public struct NetworkEndpoint: Codable, Hashable, Sendable {
