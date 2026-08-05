@@ -3,12 +3,13 @@ import FlowModel
 
 /// One observation tick: nettop + lsof samples → join → lifecycle diff → events.
 /// Owns a FlowSessionTracker (stateful across ticks). Not thread-safe; call from
-/// one loop at a time.
-public final class Sampler {
+/// one loop at a time. Marked @unchecked Sendable for background sampling;
+/// single-loop constraint still applies — one sampling loop per process.
+public final class Sampler: @unchecked Sendable {
     /// Var (not let): the app's live model swaps clients between ticks to keep
     /// the FlowSessionTracker's flowIDs stable across a test's tick boundary.
-    public var nettopClient: NettopClient
-    public var lsofClient: LsofClient
+    internal var nettopClient: NettopClient
+    internal var lsofClient: LsofClient
     public let resolver: ProcessIdentityProviding
 
     private var tracker: FlowSessionTracker

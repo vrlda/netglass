@@ -44,6 +44,9 @@ public final class LiveConnectionsModel: ObservableObject {
         }
     }
 
+    /// Cancels the tick loop. Residual overlap: an in-flight detached sample
+    /// (see runOnce) is not awaited, so a start() immediately after stop() can
+    /// observe one late apply; full closure is M3.
     public func stop() {
         tickTask?.cancel()
         tickTask = nil
@@ -51,12 +54,16 @@ public final class LiveConnectionsModel: ObservableObject {
 
     /// One sampling tick. Public for tests.
     public func runOnce() async {
+        guard !Task.isCancelled else { return }
+        let sampler = self.sampler   // read on main actor; Sampler is @unchecked Sendable
+        let events: [FlowEvent]
         do {
-            let events = try sampler.sample()
-            apply(events)
+            events = try await Task.detached(priority: .utility) { try sampler.sample() }.value
         } catch {
-            // sampling failure: keep last-known state; retry next tick
+            return   // sampling failure: keep last-known state; retry next tick
         }
+        guard !Task.isCancelled else { return }
+        apply(events)
     }
 
     private func apply(_ events: [FlowEvent]) {
