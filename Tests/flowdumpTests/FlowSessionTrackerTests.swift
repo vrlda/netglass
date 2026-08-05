@@ -1,0 +1,105 @@
+import Foundation
+import FlowModel
+import Testing
+@testable import flowdump
+
+@Suite struct FlowSessionTrackerTests {
+    private let now = Date(timeIntervalSince1970: 1_752_800_000)
+    private let local = NetworkEndpoint(
+        address: IPAddress(text: "192.168.1.42")!, port: 51234)
+    private let remote = NetworkEndpoint(
+        address: IPAddress(text: "149.154.167.51")!, port: 443)
+
+    private func row(pid: Int32 = 9217, bytesIn: UInt64, bytesOut: UInt64,
+                     processName: String = "Telegram") -> NettopRow {
+        NettopRow(processName: processName, pid: pid, connID: nil,
+                  state: "established", interface: "en0",
+                  bytesIn: bytesIn, bytesOut: bytesOut,
+                  local: local, remote: remote, transport: .tcp)
+    }
+
+    private func identity(pid: Int32, path: String = "/Applications/Telegram.app/Contents/MacOS/Telegram") -> ProcessIdentity {
+        ProcessIdentity(pid: pid, startTime: nil, executablePath: path,
+                        bundleIdentifier: "org.telegram.desktop", parentPID: nil)
+    }
+
+    @Test func newRowEmitsFlowOpened() throws {
+        let tracker = FlowSessionTracker()
+        let events = tracker.ingest([row(bytesIn: 100, bytesOut: 200)],
+                                    identityForPID: { identity(pid: $0) })
+        #expect(events.count == 1)
+        guard case .flowOpened(let opened) = events[0] else {
+            Issue.record("expected flowOpened, got \(events[0])"); return
+        }
+        #expect(opened.pid == 9217)
+        #expect(opened.bytesSent == 200)
+        #expect(opened.bytesReceived == 100)
+        #expect(opened.process?.bundleIdentifier == "org.telegram.desktop")
+    }
+
+    @Test func changedCountersEmitFlowUpdated() throws {
+        let tracker = FlowSessionTracker()
+        let first = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
+        let second = tracker.ingest([row(bytesIn: 150, bytesOut: 250)], identityForPID: { identity(pid: $0) })
+        #expect(first.count == 1)
+        #expect(second.count == 1)
+        guard case .flowUpdated(let counters) = second[0] else {
+            Issue.record("expected flowUpdated, got \(second[0])"); return
+        }
+        #expect(counters.bytesSent == 250)
+        #expect(counters.bytesReceived == 150)
+    }
+
+    @Test func unchangedCountersEmitNothing() {
+        let tracker = FlowSessionTracker()
+        _ = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
+        let second = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
+        #expect(second.isEmpty)
+    }
+
+    @Test func absentRowClosesAfterThreeMisses() throws {
+        let tracker = FlowSessionTracker()
+        _ = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
+        _ = tracker.ingest([], identityForPID: { identity(pid: $0) })   // miss 1
+        _ = tracker.ingest([], identityForPID: { identity(pid: $0) })   // miss 2
+        let third = tracker.ingest([], identityForPID: { identity(pid: $0) })  // miss 3
+        #expect(third.count == 1)
+        guard case .flowClosed(let closed) = third[0] else {
+            Issue.record("expected flowClosed, got \(third[0])"); return
+        }
+        _ = closed.endedAt  // present
+    }
+
+    @Test func counterResetReopensSession() throws {
+        let tracker = FlowSessionTracker()
+        _ = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
+        let reset = tracker.ingest([row(bytesIn: 50, bytesOut: 100)], identityForPID: { identity(pid: $0) })
+        #expect(reset.count == 2)
+        guard case .flowClosed = reset[0] else { Issue.record("expected close first"); return }
+        guard case .flowOpened = reset[1] else { Issue.record("expected reopen"); return }
+    }
+
+    @Test func identityChangeReopensSession() throws {
+        let tracker = FlowSessionTracker()
+        _ = tracker.ingest([row(bytesIn: 100, bytesOut: 200)],
+                           identityForPID: { identity(pid: $0) })
+        let changed = tracker.ingest([row(bytesIn: 100, bytesOut: 200)],
+                                     identityForPID: { identity(pid: $0, path: "/usr/bin/other") })
+        #expect(changed.count == 2)
+        guard case .flowClosed = changed[0] else { Issue.record("expected close"); return }
+        guard case .flowOpened(let reopened) = changed[1] else { Issue.record("expected reopen"); return }
+        #expect(reopened.pid == 9217)
+    }
+
+    @Test func distinctEndpointsAreDistinctSessions() {
+        let tracker = FlowSessionTracker()
+        let otherRemote = NetworkEndpoint(address: IPAddress(text: "8.8.8.8")!, port: 53)
+        let otherRow = NettopRow(processName: "Chrome", pid: 200, connID: nil,
+                                 state: "established", interface: "en0",
+                                 bytesIn: 1, bytesOut: 1, local: local,
+                                 remote: otherRemote, transport: .tcp)
+        let events = tracker.ingest([row(bytesIn: 1, bytesOut: 1), otherRow],
+                                    identityForPID: { pid in identity(pid: pid) })
+        #expect(events.count == 2)
+    }
+}
