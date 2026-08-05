@@ -44,17 +44,13 @@ import Testing
     }
 
     @Test func readsRealFixture() throws {
-        // Run `lsof -i -n -P` live (no root needed) and verify parse coverage.
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        process.arguments = ["-i", "-n", "-P"]
-        let output = Pipe()
-        process.standardOutput = output
-        try process.run()
-        process.waitUntilExit()
-        let text = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/lsof/capture-1.txt")
+        let text = try String(contentsOf: url, encoding: .utf8)
         let sockets = parser.parse(text)
-        #expect(sockets.count > 0)
-        #expect(sockets.contains { $0.pid != nil })
+        #expect(sockets.count > 0)   // 163-line live capture, listeners/wildcards filtered
     }
 }

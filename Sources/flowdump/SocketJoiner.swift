@@ -17,6 +17,8 @@ public struct SocketJoiner: Sendable {
             let group: TransportProtocol = connection.transport == .quic ? .udp : connection.transport
             guard let matches = index[JoinKey(group: group, local: connection.local, remote: connection.remote)],
                   let socket = matches.first else { continue }
+            // matches.first attribution is arbitrary when multiple processes hold the same
+            // UDP tuple (kernel discovery order), accepted for M1.
             rows.append(NettopRow(
                 processName: socket.processName,
                 pid: socket.pid,

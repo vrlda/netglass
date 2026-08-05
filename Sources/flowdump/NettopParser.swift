@@ -78,6 +78,8 @@ public struct NettopParser: Sendable {
             let after = trimmed[trimmed.index(after: end)...]
             if after.hasPrefix(":") { portPart = String(after.dropFirst()) }
         } else if let colon = trimmed.lastIndex(of: ":") {
+            // Last-colon heuristic: real input is nettop dot-port or lsof bracket-port,
+            // so trailing-group IPv6 ambiguity (2001:db8::1:2:3) is unreachable.
             let candidate = String(trimmed[..<colon])
             if IPAddress(text: candidate) != nil {
                 addressPart = candidate
