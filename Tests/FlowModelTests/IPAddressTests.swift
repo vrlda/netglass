@@ -29,6 +29,13 @@ import Testing
         #expect(IPAddress(text: "192.168.001.001") == nil)
         #expect(IPAddress(text: "hello") == nil)
         #expect(IPAddress(text: "") == nil)
+        #expect(IPAddress(text: "fe80::1%en0") == nil)
+        #expect(IPAddress(text: "fe80::1%0") == nil)
+    }
+
+    @Test func parsesBareLinkLocal() throws {
+        let ip = try #require(IPAddress(text: "fe80::1"))
+        #expect(ip.isIPv6)
     }
 
     @Test func rejectsWrongByteCount() {

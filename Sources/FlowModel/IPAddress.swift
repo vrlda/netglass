@@ -4,6 +4,7 @@ public struct IPAddress: Codable, Hashable, Sendable, CustomStringConvertible {
     public let bytes: [UInt8]
 
     public init?(text: String) {
+        guard !text.contains("%") else { return nil }
         if !text.contains(":") {
             guard Self.isValidDottedQuad(text) else { return nil }
             var v4 = in_addr()
