@@ -41,6 +41,18 @@ import Testing
         }
     }
 
+    @Test func zeroIntervalThrows() {
+        #expect(throws: ArgumentError.self) {
+            try parseArguments(["--interval", "0"])
+        }
+    }
+
+    @Test func nonPositiveDurationThrows() {
+        #expect(throws: ArgumentError.self) {
+            try parseArguments(["--duration", "-5"])
+        }
+    }
+
     @Test func runLoopEmitsAndPersists() throws {
         let base = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // Tests/flowdumpTests

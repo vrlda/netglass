@@ -53,6 +53,10 @@ public func parseArguments(_ args: [String]) throws -> CLIConfig {
         }
         index += 1
     }
+    guard config.interval > 0 else { throw ArgumentError.invalidValue("--interval", String(config.interval)) }
+    if let duration = config.duration, duration <= 0 {
+        throw ArgumentError.invalidValue("--duration", String(duration))
+    }
     return config
 }
 
