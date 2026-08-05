@@ -3,6 +3,7 @@ import FlowModel
 
 struct ProcessDetailView: View {
     let flow: LiveFlow
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -26,5 +27,10 @@ struct ProcessDetailView: View {
         }
         .padding(16)
         .frame(minWidth: 420, minHeight: 320)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { dismiss() }
+            }
+        }
     }
 }

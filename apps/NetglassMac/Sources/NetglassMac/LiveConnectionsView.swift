@@ -3,11 +3,9 @@ import SwiftUI
 import FlowModel
 
 struct LiveConnectionsView: View {
-    @EnvironmentObject private var appState: AppState
     @StateObject private var model = LiveConnectionsModel(
         sampler: AppState.defaultSampler())
     @State private var selection: LiveFlow.ID?
-    @State private var selectedFlow: LiveFlow?
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -66,12 +64,20 @@ struct LiveConnectionsView: View {
         .frame(width: 520, height: 260)
         .onAppear { model.start() }
         .onDisappear { model.stop() }
-        .onChange(of: selection) { _, newValue in
-            guard let newValue else { return }
-            selectedFlow = model.flows.first { $0.id == newValue }
+        .sheet(isPresented: detailPresented) {
+            if let flow = model.flows.first(where: { $0.flowID == selection }) {
+                ProcessDetailView(flow: flow)
+            }
         }
-        .sheet(item: $selectedFlow) { flow in
-            ProcessDetailView(flow: flow)
-        }
+    }
+
+    /// The sheet is driven off the row selection so any dismissal (Escape,
+    /// Cmd-W, Done) clears the selection — re-clicking the same row after a
+    /// dismiss sets selection again and reopens the detail.
+    private var detailPresented: Binding<Bool> {
+        Binding(
+            get: { selection != nil },
+            set: { if !$0 { selection = nil } }
+        )
     }
 }
