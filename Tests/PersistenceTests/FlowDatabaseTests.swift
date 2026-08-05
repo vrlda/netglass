@@ -114,4 +114,35 @@ import Testing
         #expect(try db.flows().count == 1)
         db.close()
     }
+
+    @Test func ingestAfterCloseThrows() throws {
+        let db = try FlowDatabase(path: ":memory:")
+        db.close()
+        #expect(throws: (any Error).self) {
+            try db.ingest([.flowOpened(try opened())])
+        }
+    }
+}
+
+@Suite struct DatabaseTests {
+    @Test func multiStatementExecWithMismatchedBindingsThrows() throws {
+        let db = try Database(path: ":memory:")
+        defer { db.close() }
+        #expect(throws: DatabaseError.self) {
+            try db.exec("SELECT ?; SELECT 1;", [.text("x")])
+        }
+    }
+
+    @Test func multiStatementExecWithNoBindingsExecutesAll() throws {
+        let db = try Database(path: ":memory:")
+        defer { db.close() }
+        try db.exec("CREATE TABLE a (x INTEGER); CREATE TABLE b (y INTEGER);")
+        let statement = try db.prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('a', 'b')")
+        var names: [String] = []
+        while try statement.step() {
+            names.append(statement.text(0))
+        }
+        #expect(names.count == 2)
+    }
 }

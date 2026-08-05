@@ -55,6 +55,10 @@ public final class Database: @unchecked Sendable {
     deinit { close() }
 
     private func bind(_ bindings: [SQLBinding], to statement: OpaquePointer?) throws {
+        let paramCount = sqlite3_bind_parameter_count(statement)
+        guard paramCount == bindings.count else {
+            throw DatabaseError.sqlite("expected \(bindings.count) bindings, statement has \(paramCount)")
+        }
         for (offset, binding) in bindings.enumerated() {
             let index = Int32(offset + 1)
             let result: Int32
@@ -124,7 +128,8 @@ public final class Statement: @unchecked Sendable {
     }
 
     public func text(_ index: Int32) -> String {
-        String(cString: sqlite3_column_text(statement, index))
+        guard !isNull(index) else { return "" }
+        return String(cString: sqlite3_column_text(statement, index))
     }
 
     public func blob(_ index: Int32) -> [UInt8] {
