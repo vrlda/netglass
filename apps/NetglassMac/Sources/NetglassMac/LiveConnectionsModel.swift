@@ -1,6 +1,7 @@
 import Foundation
 import FlowModel
 import FlowSource
+import Persistence
 
 /// Live view over the current observation: holds sampled flows on the main
 /// actor, applies FlowEvents tick by tick, and exposes a search filter.
@@ -8,6 +9,11 @@ import FlowSource
 public final class LiveConnectionsModel: ObservableObject {
     @Published public private(set) var flows: [LiveFlow] = []
     @Published public var searchText: String = ""
+
+    /// Optional history sink: when set, every tick's events are also persisted
+    /// so the live session shows up in the History window. nil in contexts
+    /// with no database (CLI-free tests).
+    private let database: FlowDatabase?
 
     public var visibleFlows: [LiveFlow] {
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
@@ -28,8 +34,9 @@ public final class LiveConnectionsModel: ObservableObject {
     private var tickTask: Task<Void, Never>?
     private let interval: TimeInterval
 
-    public init(sampler: Sampler, interval: TimeInterval = 1.0) {
+    public init(sampler: Sampler, database: FlowDatabase? = nil, interval: TimeInterval = 1.0) {
         self.sampler = sampler
+        self.database = database
         self.interval = interval
     }
 
@@ -68,6 +75,11 @@ public final class LiveConnectionsModel: ObservableObject {
         }
         guard !Task.isCancelled else { return }
         apply(events)
+        // Persistence is best-effort: a failing ingest (disk full, schema
+        // mismatch) must never break the live loop — swallow like sampling errors.
+        if let database {
+            try? database.ingest(events)
+        }
     }
 
     private func apply(_ events: [FlowEvent]) {

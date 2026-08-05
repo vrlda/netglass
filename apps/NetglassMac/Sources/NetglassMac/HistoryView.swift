@@ -93,7 +93,7 @@ struct HistoryView: View {
     private func export() {
         guard let db = appState.database else { return }
         do {
-            let all = try HistoryQuery.search(database: db, text: "")
+            let all = try HistoryQuery.search(database: db, text: searchText, limit: Int.max)
             let panel = NSSavePanel()
             panel.nameFieldStringValue = "netglass-history.json"
             panel.allowedContentTypes = [.json]

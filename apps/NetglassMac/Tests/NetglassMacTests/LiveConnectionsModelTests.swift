@@ -3,6 +3,7 @@ import Testing
 @testable import FlowModel
 @testable import FlowSource
 @testable import NetglassMac
+@testable import Persistence
 
 @Suite struct LiveConnectionsModelTests {
     private func fixtureSampler() throws -> Sampler {
@@ -69,6 +70,16 @@ import Testing
         #expect(model.visibleFlows.count == 1)
         model.searchText = "zzz"
         #expect(model.visibleFlows.isEmpty)
+    }
+
+    @MainActor
+    @Test func persistsEventsToDatabase() async throws {
+        let database = try FlowDatabase(path: ":memory:")
+        let model = LiveConnectionsModel(sampler: try fixtureSampler(), database: database)
+        await model.runOnce()
+        let flows = try database.flows()
+        #expect(flows.count >= 1)
+        #expect(flows.contains { $0.processPath.contains("Telegram") })
     }
 
     // MARK: - Fixtures

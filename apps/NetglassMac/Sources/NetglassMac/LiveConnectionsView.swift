@@ -3,8 +3,7 @@ import SwiftUI
 import FlowModel
 
 struct LiveConnectionsView: View {
-    @StateObject private var model = LiveConnectionsModel(
-        sampler: AppState.defaultSampler())
+    @EnvironmentObject private var model: LiveConnectionsModel
     @State private var selection: LiveFlow.ID?
     @Environment(\.openWindow) private var openWindow
 

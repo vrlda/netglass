@@ -8,6 +8,7 @@ struct NetglassMacApp: App {
         MenuBarExtra("Netglass", systemImage: "network") {
             LiveConnectionsView()
                 .environmentObject(appDelegate.appState)
+                .environmentObject(appDelegate.appState.liveModel)
         }
         .menuBarExtraStyle(.window)
 
