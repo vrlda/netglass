@@ -53,6 +53,14 @@ public final class FlowSessionTracker: @unchecked Sendable {
             let path = identity?.executablePath
 
             if let session = sessions[key] {
+                guard let bytesOut = row.bytesOut, let bytesIn = row.bytesIn else {
+                    // no counter info this sample; keep session, emit nothing
+                    sessions[key] = FlowSession(flowID: session.flowID,
+                                                lastBytesSent: session.lastBytesSent,
+                                                lastBytesReceived: session.lastBytesReceived,
+                                                executablePath: session.executablePath, misses: 0)
+                    continue
+                }
                 let identityChanged: Bool
                 if let oldPath = session.executablePath, let newPath = path {
                     identityChanged = oldPath != newPath
@@ -71,18 +79,17 @@ public final class FlowSessionTracker: @unchecked Sendable {
                         bytesSent: fresh.lastBytesSent, bytesReceived: fresh.lastBytesReceived)))
                     continue
                 }
-                if row.bytesOut ?? 0 != session.lastBytesSent
-                    || row.bytesIn ?? 0 != session.lastBytesReceived {
+                if bytesOut != session.lastBytesSent || bytesIn != session.lastBytesReceived {
                     events.append(.flowUpdated(FlowEvent.FlowCounters(
                         flowID: session.flowID,
-                        bytesSent: row.bytesOut ?? 0,
-                        bytesReceived: row.bytesIn ?? 0,
+                        bytesSent: bytesOut,
+                        bytesReceived: bytesIn,
                         observedAt: currentTime)))
                 }
                 sessions[key] = FlowSession(
                     flowID: session.flowID,
-                    lastBytesSent: row.bytesOut ?? 0,
-                    lastBytesReceived: row.bytesIn ?? 0,
+                    lastBytesSent: bytesOut,
+                    lastBytesReceived: bytesIn,
                     executablePath: path,
                     misses: 0)
             } else {

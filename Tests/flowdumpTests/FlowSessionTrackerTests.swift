@@ -121,8 +121,39 @@ import Testing
         #expect(counters.flowID == opened.flowID)
     }
 
-    @Test func rowsMissingFieldsSkipped() {
+    @Test func transientIdentityFailureDoesNotChurn() throws {
         let tracker = FlowSessionTracker()
+        // batch 1: identity resolves
+        _ = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
+        // batch 2: resolver transiently fails (returns nil) — must NOT close+reopen
+        let second = tracker.ingest([row(bytesIn: 120, bytesOut: 240)],
+                                    identityForPID: { _ in nil })
+        #expect(second.count == 1)
+        guard case .flowUpdated(let counters) = second[0] else {
+            Issue.record("expected single flowUpdated, got \(second)"); return
+        }
+        #expect(counters.bytesSent == 240)
+        // batch 3: identity resolves again — still the same session, no reopen
+        let third = tracker.ingest([row(bytesIn: 150, bytesOut: 300)], identityForPID: { identity(pid: $0) })
+        #expect(third.count == 1)
+        guard case .flowUpdated = third[0] else { Issue.record("expected flowUpdated"); return }
+    }
+
+    @Test func nilBytesPreserveCounters() throws {
+        let tracker = FlowSessionTracker()
+        _ = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
+        let nilBytes = NettopRow(processName: "Telegram", pid: 9217, connID: nil,
+                                 state: "established", interface: "en0",
+                                 bytesIn: nil, bytesOut: nil,
+                                 local: local, remote: remote, transport: .tcp)
+        #expect(tracker.ingest([nilBytes], identityForPID: { identity(pid: $0) }).isEmpty)
+        let after = tracker.ingest([row(bytesIn: 150, bytesOut: 300)], identityForPID: { identity(pid: $0) })
+        #expect(after.count == 1)
+        guard case .flowUpdated(let counters) = after[0] else { Issue.record("expected flowUpdated"); return }
+        #expect(counters.bytesSent == 300)   // not zeroed by the nil sample
+    }
+
+    @Test func rowsMissingFieldsSkipped() {        let tracker = FlowSessionTracker()
         let badRows = [
             NettopRow(processName: "A", pid: nil, connID: nil, state: nil, interface: nil,
                       bytesIn: 1, bytesOut: 1, local: local, remote: remote, transport: .tcp),
