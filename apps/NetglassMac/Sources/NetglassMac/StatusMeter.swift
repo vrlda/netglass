@@ -10,16 +10,23 @@ enum StatusMeter {
     static let barHeight: CGFloat = 8
     static let barGap: CGFloat = 1
     static let arrowSlotWidth: CGFloat = 9
-    static let textWidth: CGFloat = 26
+    static let textSlotWidth: CGFloat = 26
     static let segmentWidth: CGFloat = 3
     static let segmentStep: CGFloat = 4.5
 
     static var font: NSFont {
-        NSFont.monospacedSystemFont(ofSize: 9, weight: .medium)
+        NSFont.systemFont(ofSize: 9, weight: .medium)
+    }
+    private static let glyphWidth: CGFloat = 5.4
+
+    /// Fixed-width labels avoid asking CoreText to measure a custom image while
+    /// AppKit is taking a status-item snapshot.
+    static func textWidth(_ text: String) -> CGFloat {
+        CGFloat(text.utf16.count) * glyphWidth
     }
 
     static func image(down: Double, up: Double, height: CGFloat) -> NSImage {
-        let width = marginX * 2 + barWidth + arrowSlotWidth + textWidth
+        let width = marginX * 2 + barWidth + arrowSlotWidth + textSlotWidth
         return NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
             // Bars drive the layout: two chunky bars nearly touching, with the
             // speed text vertically centered on each bar's row.
@@ -28,10 +35,10 @@ enum StatusMeter {
             let midY1 = padding + barHeight / 2
             let midY2 = midY1 + barHeight + barGap
             drawRow(x: marginX, midY: midY1, roundTop: false,
-                    factor: heightFactor(down), color: .systemBlue, arrow: "↓",
+                    factor: heightFactor(down), color: .systemBlue, pointsDown: true,
                     text: ByteRate.string(down))
             drawRow(x: marginX, midY: midY2, roundTop: true,
-                    factor: heightFactor(up), color: .systemPurple, arrow: "↑",
+                    factor: heightFactor(up), color: .systemPurple, pointsDown: false,
                     text: ByteRate.string(up))
             return true
         }
@@ -39,7 +46,7 @@ enum StatusMeter {
 
     private static func drawRow(x: CGFloat, midY: CGFloat, roundTop: Bool,
                                 factor: CGFloat, color: NSColor,
-                                arrow: String, text: String) {
+                                pointsDown: Bool, text: String) {
         let barRect = NSRect(x: x, y: midY - barHeight / 2, width: barWidth, height: barHeight)
         // ghost slots: one background in the exact shape of a line at every
         // line position, so a vanished line leaves its spot behind
@@ -60,17 +67,31 @@ enum StatusMeter {
                         roundTop: roundTop).fill()
             segmentX += segmentStep
         }
-        // arrow pinned to the bar (fixed x), so only the number moves/right-aligns
-        let arrowString = NSAttributedString(string: arrow, attributes: [
-            .font: font, .foregroundColor: color])
-        let arrowSize = arrowString.size()
-        arrowString.draw(at: NSPoint(x: x + barWidth + 1, y: midY - arrowSize.height / 2))
-        // speed number, right-aligned in a fixed slot so the item never jitters
+        // Draw arrow as a path; text measurement in NSImage reps can crash
+        // during AppKit status-item snapshotting on some macOS releases.
+        drawArrow(x: x + barWidth + 1, midY: midY, pointsDown: pointsDown, color: color)
+
+        // Speed number, right-aligned in a fixed slot so the item never jitters.
         let number = NSAttributedString(string: text, attributes: [
             .font: font, .foregroundColor: NSColor.labelColor])
-        let numberSize = number.size()
-        number.draw(at: NSPoint(x: x + barWidth + arrowSlotWidth + textWidth - numberSize.width,
-                                y: midY - numberSize.height / 2))
+        let baseline = midY - (font.ascender + font.descender) / 2
+        number.draw(at: NSPoint(x: x + barWidth + arrowSlotWidth + textSlotWidth - textWidth(text),
+                                y: baseline))
+    }
+
+    private static func drawArrow(x: CGFloat, midY: CGFloat, pointsDown: Bool, color: NSColor) {
+        let path = NSBezierPath()
+        path.lineWidth = 1.2
+        let tipY = midY + (pointsDown ? -3 : 3)
+        let tailY = midY + (pointsDown ? 3 : -3)
+        let headY = tipY + (pointsDown ? 2 : -2)
+        path.move(to: NSPoint(x: x + 4.5, y: tailY))
+        path.line(to: NSPoint(x: x + 4.5, y: tipY))
+        path.move(to: NSPoint(x: x + 2.5, y: headY))
+        path.line(to: NSPoint(x: x + 4.5, y: tipY))
+        path.line(to: NSPoint(x: x + 6.5, y: headY))
+        color.setStroke()
+        path.stroke()
     }
 
     /// A line segment: rounded on one end (toward the bar's outer edge),

@@ -11,7 +11,7 @@ struct MenuBarPopoverView: View {
     @EnvironmentObject private var rateTracker: AppRateTracker
 
     private var apps: [AppAgg] { RealAgg.apps(from: liveModel.flows) }
-    private var samples: [(up: Double, down: Double)] {
+    private var samples: [TrafficChartSample] {
         TrafficHistory.aggregate(liveModel.throughputHistory,
                                                                  bucketSeconds: liveModel.samplesPerBucket, capacity: 60)
     }
@@ -117,7 +117,7 @@ struct MenuBarPopoverView: View {
                     .monospacedDigit()
                     .foregroundStyle(NetglassColors.download)
             }
-            TrafficBarChart(samples: samples.isEmpty ? [(0, 0)] : samples,
+            TrafficBarChart(samples: samples.isEmpty ? [.zero] : samples,
                             paused: monitoring.isPaused, tickSeconds: 5, capacity: 60)
                 .frame(height: 120)
         }

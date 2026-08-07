@@ -10,7 +10,7 @@ struct OverviewView: View {
     @EnvironmentObject private var rateTracker: AppRateTracker
     @EnvironmentObject private var capture: PacketCaptureViewModel
     @State private var metricMode: MetricMode = .bytes
-    @State private var historicalSamples: [(up: Double, down: Double)] = []
+    @State private var historicalSamples: [TrafficChartSample] = []
 
     enum MetricMode: String, CaseIterable, Identifiable {
         case bytes = "B/s"
@@ -22,19 +22,19 @@ struct OverviewView: View {
     private var domains: [DomainAgg] { RealAgg.domains(from: liveModel.flows) }
     private var activeFlows: [LiveFlow] { liveModel.flows.filter(\.isActive) }
 
-    private var liveSamples: [(up: Double, down: Double)] {
+    private var liveSamples: [TrafficChartSample] {
         TrafficHistory.aggregate(liveModel.throughputHistory,
                                                                  bucketSeconds: liveModel.samplesPerBucket, capacity: 60)
     }
 
-    private var samples: [(up: Double, down: Double)] {
+    private var samples: [TrafficChartSample] {
         if metricMode == .packets {
             // real per-second packet rates from the active capture
-            return capture.packetsHistory.map { ($0, 0) }
+            return capture.packetsHistory
         }
         switch appVM.timeRange {
         case .live, .fiveMinutes:
-            return liveSamples.isEmpty ? [(0, 0)] : liveSamples
+            return liveSamples.isEmpty ? [.zero] : liveSamples
         case .hour, .day:
             return historicalSamples
         }

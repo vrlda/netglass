@@ -23,7 +23,7 @@ import Testing
     /// color space, so component comparisons survive color-space conversion.
     private func pixels(_ rep: NSBitmapImageRep, matching color: NSColor,
                         tolerance: CGFloat = 0.03) -> Int {
-        guard let target = color.usingColorSpace(rep.colorSpace ?? .deviceRGB) else { return 0 }
+        guard let target = color.usingColorSpace(rep.colorSpace) else { return 0 }
         return counts(rep, in: 0..<rep.pixelsWide) {
             abs($0.redComponent - target.redComponent) <= tolerance
                 && abs($0.greenComponent - target.greenComponent) <= tolerance
@@ -75,6 +75,11 @@ import Testing
         let blueLow = pixels(low, matching: .systemBlue)
         let blueHigh = pixels(high, matching: .systemBlue)
         #expect(blueHigh > blueLow * 3)
+    }
+
+    @Test func statusMeterTextWidthIsDeterministic() {
+        #expect(StatusMeter.textWidth("AB") == StatusMeter.textWidth("CD"))
+        #expect(StatusMeter.textWidth("ABCD") == StatusMeter.textWidth("AB") * 2)
     }
 
     @Test func textRightAlignedInFixedSlots() {

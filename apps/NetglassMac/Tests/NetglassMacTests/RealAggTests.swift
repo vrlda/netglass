@@ -103,8 +103,10 @@ import Testing
         ]
         let samples = TrafficHistory.liveSamples(history)
         #expect(samples.count == 2)
-        #expect(samples[0] == (50, 100))    // (up, down)
-        #expect(samples[1] == (150, 200))
+        #expect(samples[0].up == 50)
+        #expect(samples[0].down == 100)
+        #expect(samples[1].up == 150)
+        #expect(samples[1].down == 200)
     }
 
     @Test func aggregateBucketsThreeSecondWindows() {
@@ -136,6 +138,22 @@ import Testing
         #expect(buckets.count == 2)
         #expect(buckets[0].down == 30)
         #expect(buckets[1].down == 30)
+    }
+
+    @Test func aggregateKeepsCandleIdentityWhenWindowRolls() {
+        let t = Date(timeIntervalSince1970: 1_752_800_000)
+        let history = (0..<9).map { i in
+            ThroughputSample(date: t.addingTimeInterval(TimeInterval(i)),
+                             bytesPerSecondDown: Double(i), bytesPerSecondUp: 0)
+        }
+        let rolled = history + (9..<12).map { i in
+            ThroughputSample(date: t.addingTimeInterval(TimeInterval(i)),
+                             bytesPerSecondDown: Double(i), bytesPerSecondUp: 0)
+        }
+        let before = TrafficHistory.aggregate(history, bucketSeconds: 3, capacity: 3)
+        let after = TrafficHistory.aggregate(rolled, bucketSeconds: 3, capacity: 3)
+
+        #expect(after.map(\.id) == before.dropFirst().map(\.id) + [after.last!.id])
     }
 
     @Test func aggregateEmitsGrowingPartialBucket() {

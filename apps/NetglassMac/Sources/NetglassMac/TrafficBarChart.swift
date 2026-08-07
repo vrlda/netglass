@@ -5,7 +5,7 @@ import SwiftUI
 /// of stepping, and a peak-hold scale so the y-axis doesn't re-fit (jump)
 /// every tick. Paused state dims the whole chart.
 struct TrafficBarChart: View {
-    let samples: [(up: Double, down: Double)]
+    let samples: [TrafficChartSample]
     let paused: Bool
     var leftLabel = "5 minutes ago"
     var rightLabel = "now"
@@ -13,20 +13,15 @@ struct TrafficBarChart: View {
     /// Fixed number of horizontal slots (right-anchored live scroll).
     var capacity: Int?
 
-    @State private var hoverIndex: Int?
+    @State private var hoverID: TrafficChartSample.ID?
     /// Auto-fitting scale: expands on new bucket highs (bars clamp at full
     /// height meanwhile), decays 15% per completed bucket. All changes
     /// animate, so bars glide instead of jumping.
     @State private var scale: Double = NetglassMetrics.chartPeak
-    @State private var lastBucketCount = 0
+    @State private var lastBucketID: TrafficChartSample.ID?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var slots: Int { capacity ?? max(samples.count, 1) }
-
-    /// Equatable proxy for the tuple samples (tuples aren't Equatable).
-    private var animatedKey: String {
-        samples.map { "\($0.up),\($0.down)" }.joined(separator: ";")
-    }
 
     var body: some View {
         VStack(spacing: 4) {
@@ -41,16 +36,16 @@ struct TrafficBarChart: View {
                     gridAndBaseline(w: w, h: h, mid: mid)
 
                     HStack(alignment: .center, spacing: 1.5) {
-                        ForEach(Array(samples.enumerated()), id: \.offset) { index, sample in
-                            column(sample: sample, index: index,
-                                   mid: mid, barWidth: barWidth)
+                        ForEach(samples) { sample in
+                            column(sample: sample, mid: mid, barWidth: barWidth)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .trailing)   // right-anchored
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: animatedKey)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: samples)
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: scale)
 
-                    if let hoverIndex, samples.indices.contains(hoverIndex) {
+                    if let hoverID,
+                       let hoverIndex = samples.firstIndex(where: { $0.id == hoverID }) {
                         tooltip(sample: samples[hoverIndex], index: hoverIndex)
                     }
                 }
@@ -63,30 +58,30 @@ struct TrafficBarChart: View {
                 Text(rightLabel).font(.system(size: 9)).foregroundStyle(.tertiary)
             }
         }
-        .onChange(of: animatedKey) { _, _ in
+        .onChange(of: samples) { _, _ in
             updateScale()
         }
     }
 
-    private func column(sample: (up: Double, down: Double), index: Int,
-                        mid: CGFloat, barWidth: CGFloat) -> some View {
+    private func column(sample: TrafficChartSample, mid: CGFloat,
+                        barWidth: CGFloat) -> some View {
         let upH = min(1, sample.up / scale) * (mid - 6)
         let downH = min(1, sample.down / scale) * (mid - 6)
         return VStack(spacing: 0) {
             Color.clear.frame(height: max(0, mid - upH))
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(NetglassColors.upload.opacity(hoverIndex == index ? 0.95 : 0.72))
+                .fill(NetglassColors.upload.opacity(hoverID == sample.id ? 0.95 : 0.72))
                 .frame(width: barWidth, height: max(0, upH))
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(NetglassColors.download.opacity(hoverIndex == index ? 0.95 : 0.72))
+                .fill(NetglassColors.download.opacity(hoverID == sample.id ? 0.95 : 0.72))
                 .frame(width: barWidth, height: max(0, downH))
             Color.clear.frame(height: max(0, mid - downH))
         }
         .frame(width: barWidth)
         .contentShape(Rectangle())
         .onHover { inside in
-            if inside { hoverIndex = index }
-            else if hoverIndex == index { hoverIndex = nil }
+            if inside { hoverID = sample.id }
+            else if hoverID == sample.id { hoverID = nil }
         }
     }
 
@@ -105,7 +100,7 @@ struct TrafficBarChart: View {
         }
     }
 
-    private func tooltip(sample: (up: Double, down: Double), index: Int) -> some View {
+    private func tooltip(sample: TrafficChartSample, index: Int) -> some View {
         let secondsAgo = Int(Double(samples.count - 1 - index) * tickSeconds)
         return VStack(alignment: .leading, spacing: 2) {
             Text(timeAgo(secondsAgo)).font(.system(size: 9)).foregroundStyle(.secondary)
@@ -131,15 +126,14 @@ struct TrafficBarChart: View {
     /// growing candle caps at full height instead of moving the scale.
     private func updateScale() {
         let windowMax = samples.map { max($0.up, $0.down) }.max() ?? 0
-        if samples.count != lastBucketCount {
-            lastBucketCount = samples.count
-            if lastBucketCount <= 1 {
-                scale = max(NetglassMetrics.chartPeak, windowMax)
-            } else if windowMax > scale {
-                scale = windowMax          // new bucket high: expand
-            } else {
-                scale = max(NetglassMetrics.chartPeak * 0.02, scale * 0.85)   // slow decay
-            }
+        guard let newestID = samples.last?.id, newestID != lastBucketID else { return }
+        lastBucketID = newestID
+        if samples.count <= 1 {
+            scale = max(NetglassMetrics.chartPeak, windowMax)
+        } else if windowMax > scale {
+            scale = windowMax          // new bucket high: expand
+        } else {
+            scale = max(NetglassMetrics.chartPeak * 0.02, scale * 0.85)   // slow decay
         }
     }
 
@@ -151,13 +145,13 @@ struct TrafficBarChart: View {
 
 /// Tiny two-series sparkline for compact panels and the inspector.
 struct MiniTrafficSparkline: View {
-    let samples: [(up: Double, down: Double)]
+    let samples: [TrafficChartSample]
 
     var body: some View {
         Canvas { context, size in
             let peak = max(1_000, samples.map { max($0.up, $0.down) }.max() ?? 0)
             let w = size.width, h = size.height
-            func path(_ keyPath: KeyPath<(up: Double, down: Double), Double>) -> Path {
+            func path(_ keyPath: KeyPath<TrafficChartSample, Double>) -> Path {
                 var p = Path()
                 for (i, s) in samples.enumerated() {
                     let x = samples.count == 1 ? w / 2 : CGFloat(i) / CGFloat(max(1, samples.count - 1)) * w

@@ -34,7 +34,7 @@ Starting your first packet capture prompts for an admin password — this is req
 git clone https://github.com/vrlda/netglass.git
 cd netglass
 swift build          # builds the app and the flowdump CLI
-swift test           # runs the test suite (162 tests, fully offline)
+swift test           # runs the test suite (164 tests, fully offline)
 ./scripts/build-app.sh --open   # assemble the .app bundle and launch it
 ```
 

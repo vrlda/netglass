@@ -171,6 +171,22 @@ public final class AppRateTracker: ObservableObject {
 
 // MARK: - Real chart data
 
+/// A chart candle with stable identity. The bucket's first sample date stays
+/// attached to it while the trailing partial bucket grows.
+public struct TrafficChartSample: Identifiable, Equatable, Sendable {
+    public let id: Date
+    public let up: Double
+    public let down: Double
+
+    public init(id: Date, up: Double, down: Double) {
+        self.id = id
+        self.up = up
+        self.down = down
+    }
+
+    public static let zero = TrafficChartSample(id: .distantPast, up: 0, down: 0)
+}
+
 /// Real traffic series for the traffic charts: the live 5-minute window comes
 /// from in-memory per-tick samples; longer ranges come from history buckets.
 public enum TrafficHistory {
@@ -188,8 +204,11 @@ public enum TrafficHistory {
         }
     }
 
-    public static func liveSamples(_ history: [ThroughputSample]) -> [(up: Double, down: Double)] {
-        history.map { ($0.bytesPerSecondUp, $0.bytesPerSecondDown) }
+    public static func liveSamples(_ history: [ThroughputSample]) -> [TrafficChartSample] {
+        history.map {
+            TrafficChartSample(id: $0.date, up: $0.bytesPerSecondUp,
+                               down: $0.bytesPerSecondDown)
+        }
     }
 
     /// Aggregates per-second history into fixed-width buckets (e.g. 5 s each),
@@ -198,25 +217,30 @@ public enum TrafficHistory {
     /// inside the current window. The y-scale is a held peak (no re-fit
     /// jumps), so growth stays smooth. The live chart uses 60 × 5 s = 5 min.
     public static func aggregate(_ history: [ThroughputSample],
-                                 bucketSeconds: Int, capacity: Int) -> [(up: Double, down: Double)] {
+                                 bucketSeconds: Int, capacity: Int) -> [TrafficChartSample] {
         guard !history.isEmpty else { return [] }
-        var buckets: [(up: Double, down: Double)] = []
+        var buckets: [TrafficChartSample] = []
         var accUp = 0.0
         var accDown = 0.0
         var count = 0
+        var bucketStart: Date?
         for sample in history {
+            if count == 0 { bucketStart = sample.date }
             accUp += sample.bytesPerSecondUp
             accDown += sample.bytesPerSecondDown
             count += 1
             if count == bucketSeconds {
-                buckets.append((accUp, accDown))
+                buckets.append(TrafficChartSample(id: bucketStart ?? sample.date,
+                                                   up: accUp, down: accDown))
                 accUp = 0
                 accDown = 0
                 count = 0
+                bucketStart = nil
             }
         }
-        if count > 0 {
-            buckets.append((accUp, accDown))   // growing live bar
+        if count > 0, let bucketStart {
+            buckets.append(TrafficChartSample(id: bucketStart,
+                                               up: accUp, down: accDown)) // growing live bar
         }
         if buckets.count > capacity {
             buckets.removeFirst(buckets.count - capacity)
@@ -225,10 +249,11 @@ public enum TrafficHistory {
     }
 
     public static func bucketSamples(_ buckets: [TrafficBucket],
-                                     secondsPerBucket: Int) -> [(up: Double, down: Double)] {
+                                     secondsPerBucket: Int) -> [TrafficChartSample] {
         buckets.map {
-            (Double($0.bytesSent) / Double(secondsPerBucket),
-             Double($0.bytesReceived) / Double(secondsPerBucket))
+            TrafficChartSample(id: $0.date,
+                               up: Double($0.bytesSent) / Double(secondsPerBucket),
+                               down: Double($0.bytesReceived) / Double(secondsPerBucket))
         }
     }
 }

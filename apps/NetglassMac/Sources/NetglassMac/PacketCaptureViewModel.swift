@@ -50,7 +50,7 @@ public final class PacketCaptureViewModel: ObservableObject {
     /// Real packet rate derived from parsing the growing capture file.
     @Published public private(set) var packetsPerSecond: Double = 0
     /// Rolling per-second packet-rate history for the packets/s chart mode.
-    @Published public private(set) var packetsHistory: [Double] = []
+    @Published public private(set) var packetsHistory: [TrafficChartSample] = []
 
     private var activeSession: CaptureSession?
     private var ticker: Timer?
@@ -206,7 +206,7 @@ public final class PacketCaptureViewModel: ObservableObject {
             self.lastPacketCount = count
             self.lastPacketCountDate = now
         }
-        packetsHistory.append(packetsPerSecond)
+        packetsHistory.append(TrafficChartSample(id: now, up: packetsPerSecond, down: 0))
         if packetsHistory.count > 300 {
             packetsHistory.removeFirst(packetsHistory.count - 300)
         }
