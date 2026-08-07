@@ -47,4 +47,34 @@ import Testing
         #expect(lines[1].contains("149.154.167.51"))
         #expect(lines[1].contains("443"))
     }
+
+    @Test func csvEscapesCommasQuotesAndNewlines() throws {
+        // A process path with a comma, a quoted bundle id, and a newline in
+        // the bundle id must survive the CSV round trip as one cell.
+        let flow = StoredFlow(
+            flowID: UUID(uuidString: "E621E1F8-C36C-495A-93FC-0C247A3E6E5F")!,
+            processPath: "/Applications/Weird,App.app/Contents/MacOS/Weird,App",
+            bundleIdentifier: "com.example.\"quoted\"",
+            transport: .tcp,
+            localAddress: try #require(IPAddress(text: "192.168.1.42")),
+            localPort: 51234,
+            remoteAddress: try #require(IPAddress(text: "149.154.167.51")),
+            remotePort: 443,
+            startedAt: Date(timeIntervalSince1970: 1_752_800_000),
+            endedAt: nil,
+            bytesSent: 3400, bytesReceived: 1200,
+            domain: "line1\nline2.example")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("netglass-export-\(UUID().uuidString).csv")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Exporter.exportCSV([flow], to: url)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        // the whole record is one row: the flow id appears exactly once, so
+        // the embedded newline did not start a new record
+        #expect(text.hasPrefix("flow_id,"))
+        #expect(text.components(separatedBy: "E621E1F8-C36C-495A-93FC-0C247A3E6E5F").count == 2)
+        #expect(text.contains("\"/Applications/Weird,App.app/Contents/MacOS/Weird,App\""))
+        #expect(text.contains("\"com.example.\"\"quoted\"\"\""))
+        #expect(text.contains("\"line1\nline2.example\""))
+    }
 }

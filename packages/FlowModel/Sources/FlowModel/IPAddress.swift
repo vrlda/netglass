@@ -41,6 +41,32 @@ public struct IPAddress: Codable, Hashable, Sendable, CustomStringConvertible {
     public var isIPv4: Bool { bytes.count == 4 }
     public var isIPv6: Bool { bytes.count == 16 }
 
+    /// Local traffic: loopback, private (RFC 1918), link-local, ULA,
+    /// multicast, broadcast and unspecified addresses. Remote endpoints in
+    /// these ranges are not worth tracking (local devices, self-connections).
+    public var isLocal: Bool {
+        switch bytes.count {
+        case 4:
+            let b0 = bytes[0]
+            if b0 == 127 { return true }                                   // loopback
+            if b0 == 10 { return true }                                    // 10/8
+            if b0 == 172, bytes[1] >= 16, bytes[1] <= 31 { return true }   // 172.16/12
+            if b0 == 192, bytes[1] == 168 { return true }                  // 192.168/16
+            if b0 == 169, bytes[1] == 254 { return true }                  // link-local
+            if b0 == 0 { return true }                                     // unspecified
+            if b0 >= 224 { return true }                                   // multicast + broadcast
+            return false
+        case 16:
+            if bytes[0] == 0xFF { return true }                            // multicast
+            if bytes[0] == 0xFC || bytes[0] == 0xFD { return true }        // fc00::/7 ULA
+            if bytes[0] == 0xFE, bytes[1] & 0xC0 == 0x80 { return true }   // fe80::/10 link-local
+            if bytes.prefix(15).allSatisfy({ $0 == 0 }) { return true }    // :: and ::1
+            return false
+        default:
+            return false
+        }
+    }
+
     public var text: String {
         if isIPv4 {
             return render4()

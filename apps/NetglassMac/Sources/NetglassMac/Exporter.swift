@@ -9,7 +9,7 @@ public enum Exporter {
     }
 
     public static func exportCSV(_ flows: [StoredFlow], to url: URL) throws {
-        var lines = ["flow_id,process_path,bundle_identifier,transport,local_address,local_port,remote_address,remote_port,started_at,ended_at,bytes_sent,bytes_received"]
+        var lines = ["flow_id,process_path,bundle_identifier,transport,local_address,local_port,remote_address,remote_port,domain,domain_confidence,started_at,ended_at,bytes_sent,bytes_received"]
         for flow in flows {
             let fields = [
                 flow.flowID.uuidString,
@@ -20,6 +20,8 @@ public enum Exporter {
                 String(flow.localPort),
                 flow.remoteAddress.text,
                 String(flow.remotePort),
+                csvEscape(flow.domain),
+                String(flow.domainConfidence),
                 iso8601(flow.startedAt),
                 flow.endedAt.map(iso8601) ?? "",
                 String(flow.bytesSent),
@@ -31,7 +33,8 @@ public enum Exporter {
     }
 
     private static func csvEscape(_ value: String) -> String {
-        guard value.contains(",") || value.contains("\"") else { return value }
+        guard value.contains(",") || value.contains("\"")
+                || value.contains("\n") || value.contains("\r") else { return value }
         return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 

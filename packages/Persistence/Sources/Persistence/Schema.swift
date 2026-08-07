@@ -18,7 +18,9 @@ public enum Schema {
         started_at      REAL NOT NULL,
         ended_at        REAL,
         bytes_sent      INTEGER NOT NULL DEFAULT 0,
-        bytes_received  INTEGER NOT NULL DEFAULT 0
+        bytes_received  INTEGER NOT NULL DEFAULT 0,
+        domain          TEXT NOT NULL DEFAULT '',
+        domain_confidence REAL NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_flows_process_time
@@ -26,4 +28,21 @@ public enum Schema {
     CREATE INDEX IF NOT EXISTS idx_flows_remote
         ON flows(remote_address, started_at DESC);
     """
+
+    /// Adds columns introduced after the initial schema to databases created
+    /// by earlier versions. Idempotent.
+    public static func migrate(_ db: Database) throws {
+        let statement = try db.prepare("PRAGMA table_info(flows)")
+        var columns: Set<String> = []
+        while try statement.step() {
+            columns.insert(statement.text(1))
+        }
+        statement.close()
+        if !columns.contains("domain") {
+            try db.exec("ALTER TABLE flows ADD COLUMN domain TEXT NOT NULL DEFAULT ''")
+        }
+        if !columns.contains("domain_confidence") {
+            try db.exec("ALTER TABLE flows ADD COLUMN domain_confidence REAL NOT NULL DEFAULT 0")
+        }
+    }
 }

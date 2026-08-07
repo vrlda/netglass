@@ -71,6 +71,25 @@ import Testing
         #expect(closed.endedAt == fixed)
     }
 
+    @Test func silentSessionClosesOnTimeBasedTTL() throws {
+        let clock = MockClock()
+        // TTL 30s: after one silent tick the session survives (misses 1);
+        // advancing the clock past the TTL closes it on the next ingest even
+        // though the miss budget (3) is far from spent.
+        let tracker = FlowSessionTracker(now: { clock.now }, inactivityTTL: 30)
+        _ = tracker.ingest([row(bytesIn: 100, bytesOut: 200)], identityForPID: { identity(pid: $0) })
+        clock.advance(10)
+        _ = tracker.ingest([], identityForPID: { identity(pid: $0) })
+        #expect(tracker.sessionCount == 1)
+        clock.advance(40)   // 50s since last seen
+        let events = tracker.ingest([], identityForPID: { identity(pid: $0) })
+        #expect(events.count == 1)
+        guard case .flowClosed = events[0] else {
+            Issue.record("expected flowClosed, got \(events[0])"); return
+        }
+        #expect(tracker.sessionCount == 0)
+    }
+
     @Test func injectedClockDrivesTimestamps() throws {
         let fixed = Date(timeIntervalSince1970: 1_752_800_000)
         let tracker = FlowSessionTracker(now: { fixed })

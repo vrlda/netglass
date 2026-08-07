@@ -16,14 +16,23 @@ public final class FlowSessionTracker: @unchecked Sendable {
         var lastBytesReceived: UInt64
         var executablePath: String?
         var misses: Int
+        var lastSeenAt: Date
     }
 
     private let now: @Sendable () -> Date
+    /// A session not seen for longer than this is closed even before its
+    /// miss budget runs out (time-based eviction alongside miss counting).
+    private let inactivityTTL: TimeInterval
     private var sessions: [SessionKey: FlowSession] = [:]
 
-    public init(now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(now: @escaping @Sendable () -> Date = { Date() },
+                inactivityTTL: TimeInterval = 30) {
         self.now = now
+        self.inactivityTTL = inactivityTTL
     }
+
+    /// Number of tracked sessions — test visibility for eviction assertions.
+    var sessionCount: Int { sessions.count }
 
     public func ingest(
         _ rows: [NettopRow],
@@ -45,7 +54,8 @@ public final class FlowSessionTracker: @unchecked Sendable {
             guard let pid = row.pid,
                   let local = row.local,
                   let remote = row.remote,
-                  let transport = row.transport else { continue }
+                  let transport = row.transport,
+                  !remote.address.isLocal else { continue }   // skip local destinations
 
             let key = SessionKey(pid: pid, transport: transport, local: local, remote: remote)
             seen.insert(key)
@@ -58,7 +68,8 @@ public final class FlowSessionTracker: @unchecked Sendable {
                     sessions[key] = FlowSession(flowID: session.flowID,
                                                 lastBytesSent: session.lastBytesSent,
                                                 lastBytesReceived: session.lastBytesReceived,
-                                                executablePath: session.executablePath, misses: 0)
+                                                executablePath: session.executablePath,
+                                                misses: 0, lastSeenAt: session.lastSeenAt)
                     continue
                 }
                 let identityChanged: Bool
@@ -91,7 +102,8 @@ public final class FlowSessionTracker: @unchecked Sendable {
                     lastBytesSent: bytesOut,
                     lastBytesReceived: bytesIn,
                     executablePath: path,
-                    misses: 0)
+                    misses: 0,
+                    lastSeenAt: currentTime)
             } else {
                 let fresh = makeSession(pid: pid, transport: transport, local: local,
                                         remote: remote, path: path, row: row, at: currentTime)
@@ -106,7 +118,10 @@ public final class FlowSessionTracker: @unchecked Sendable {
 
         for (key, session) in sessions where !seen.contains(key) {
             let misses = session.misses + 1
-            if misses >= 3 {
+            // time-based eviction first: a session silent past the TTL closes
+            // even before the miss budget runs out
+            let silentSince = currentTime.timeIntervalSince(session.lastSeenAt)
+            if silentSince >= inactivityTTL || misses >= 3 {
                 events.append(.flowClosed(FlowEvent.FlowClosed(flowID: session.flowID, endedAt: currentTime)))
                 sessions.removeValue(forKey: key)
             } else {
@@ -114,7 +129,8 @@ public final class FlowSessionTracker: @unchecked Sendable {
                                             lastBytesSent: session.lastBytesSent,
                                             lastBytesReceived: session.lastBytesReceived,
                                             executablePath: session.executablePath,
-                                            misses: misses)
+                                            misses: misses,
+                                            lastSeenAt: session.lastSeenAt)
             }
         }
         return events
@@ -130,6 +146,6 @@ public final class FlowSessionTracker: @unchecked Sendable {
                              path: String?, row: NettopRow, at date: Date) -> FlowSession {
         FlowSession(flowID: UUID(), lastBytesSent: row.bytesOut ?? 0,
                     lastBytesReceived: row.bytesIn ?? 0,
-                    executablePath: path, misses: 0)
+                    executablePath: path, misses: 0, lastSeenAt: date)
     }
 }

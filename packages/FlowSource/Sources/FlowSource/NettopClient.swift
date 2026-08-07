@@ -13,6 +13,8 @@ public protocol LsofClient: Sendable {
 }
 
 public struct ProcessNettopClient: NettopClient {
+    private static let drainQueue = DispatchQueue(label: "netglass.nettop-drain")
+
     public init() {}
 
     public func sample() throws -> String {
@@ -26,7 +28,7 @@ public struct ProcessNettopClient: NettopClient {
         // happens-before via drain group wait(): the queue block completes before
         // wait() returns, so cross-thread access below needs no synchronization.
         nonisolated(unsafe) var captured = Data()
-        let queue = DispatchQueue(label: "netglass.nettop-drain")
+        let queue = Self.drainQueue
         let drain = DispatchGroup()
         drain.enter()
         queue.async {
@@ -48,7 +50,112 @@ public struct ProcessNettopClient: NettopClient {
     }
 }
 
+/// Long-lived nettop: ONE subprocess streams batches at `interval` seconds;
+/// `sample()` returns the latest COMPLETE batch. Eliminates the per-tick
+/// subprocess spawn (the dominant idle CPU cost) and the per-tick queue
+/// churn. Self-starts on the first sample; no wiring changes needed.
+public final class StreamingNettopClient: NettopClient, @unchecked Sendable {
+    public static let header = "time,,interface,state,bytes_in,bytes_out,"
+
+    private let lock = NSLock()
+    private var latestBatch = ""
+    private var pending = ""
+    private var process: Process?
+    private var started = false
+    private let interval: Double
+
+    public init(interval: Double = 0.25) {
+        self.interval = interval
+    }
+
+    public func sample() throws -> String {
+        startIfNeeded()
+        lock.lock()
+        defer { lock.unlock() }
+        return latestBatch
+    }
+
+    public func stop() {
+        lock.lock()
+        started = false
+        let process = self.process
+        self.process = nil
+        lock.unlock()
+        process?.terminate()
+    }
+
+    deinit { stop() }
+
+    private func startIfNeeded() {
+        lock.lock()
+        guard !started else { lock.unlock(); return }
+        started = true
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
+        process.arguments = ["-n", "-L", String(interval),
+                             "-J", "bytes_in,bytes_out,interface,state,time"]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            started = false
+            lock.unlock()
+            return
+        }
+        self.process = process
+        let handle = output.fileHandleForReading
+        lock.unlock()
+        handle.readabilityHandler = { [weak self] fileHandle in
+            let data = fileHandle.availableData
+            guard !data.isEmpty, let self else {
+                fileHandle.readabilityHandler = nil
+                return
+            }
+            self.consume(String(data: data, encoding: .utf8) ?? "")
+        }
+    }
+
+    private func consume(_ chunk: String) {
+        let (completed, rest) = Self.splitBatches(Self.header, chunk, pending: pending)
+        lock.lock()
+        pending = rest
+        if let last = completed.last {
+            latestBatch = last
+        }
+        lock.unlock()
+    }
+
+    /// Pure batch splitting: emits COMPLETE batches (header line followed by
+    /// its rows) — a batch is published only when the NEXT header arrives,
+    /// so a chunk split mid-batch never yields a truncated table. The rest
+    /// keeps the open batch's header so it can complete later.
+    static func splitBatches(_ header: String, _ chunk: String,
+                             pending: String) -> (completed: [String], rest: String) {
+        let text = pending + chunk
+        var completed: [String] = []
+        var batchStart: String.Index?
+        var cursor = text.startIndex
+        while cursor < text.endIndex {
+            guard let newline = text[cursor...].firstIndex(of: "\n") else { break }
+            let line = text[cursor..<newline]
+            if line.hasPrefix(header) {
+                if let start = batchStart {
+                    completed.append(String(text[start..<cursor]))
+                }
+                batchStart = cursor
+            }
+            cursor = text.index(after: newline)
+        }
+        let rest = batchStart.map { text[$0...] } ?? text[cursor...]
+        return (completed, String(rest))
+    }
+}
+
 public struct ProcessLsofClient: LsofClient {
+    private static let drainQueue = DispatchQueue(label: "netglass.lsof-drain")
+
     public init() {}
 
     public func sample() throws -> String {
@@ -62,7 +169,7 @@ public struct ProcessLsofClient: LsofClient {
         // happens-before via drain group wait(): the queue block completes before
         // wait() returns, so cross-thread access below needs no synchronization.
         nonisolated(unsafe) var captured = Data()
-        let queue = DispatchQueue(label: "netglass.lsof-drain")
+        let queue = Self.drainQueue
         let drain = DispatchGroup()
         drain.enter()
         queue.async {
