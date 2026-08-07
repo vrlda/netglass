@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/vrlda/netglass)](https://github.com/vrlda/netglass/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A process-aware network monitor for macOS. Netglass shows which apps are talking, to whom, and how much — live per-app connections, domains with reverse-DNS evidence, DNS activity, packet capture and inspection, and persistent history. It is read-only: no kernel extensions, no traffic filtering, no system modifications — just Apple's own APIs and command-line tools.
+A process-aware network monitor for macOS. Netglass shows which apps are talking, to whom, and how much — live per-app connections, domains with reverse-DNS evidence, DNS activity, packet capture and inspection, and persistent history.
 
 ## Features
 
