@@ -19,6 +19,18 @@ import Testing
         return count
     }
 
+    /// Pixels matching a color once both are expressed in the bitmap's
+    /// color space, so component comparisons survive color-space conversion.
+    private func pixels(_ rep: NSBitmapImageRep, matching color: NSColor,
+                        tolerance: CGFloat = 0.03) -> Int {
+        guard let target = color.usingColorSpace(rep.colorSpace ?? .deviceRGB) else { return 0 }
+        return counts(rep, in: 0..<rep.pixelsWide) {
+            abs($0.redComponent - target.redComponent) <= tolerance
+                && abs($0.greenComponent - target.greenComponent) <= tolerance
+                && abs($0.blueComponent - target.blueComponent) <= tolerance
+        }
+    }
+
     @Test func rendersBlueDownBarPurpleUpBarWithText() {
         let image = StatusMeter.image(down: 50_000_000, up: 8_000_000, height: 22)
         #expect(image.size.width > 60)
@@ -60,9 +72,9 @@ import Testing
         // Near-idle: fill is only the 3pt nub. High rate: nearly full bar.
         let low = pixels(of: StatusMeter.image(down: 0, up: 0, height: 20))
         let high = pixels(of: StatusMeter.image(down: 100_000_000, up: 0, height: 20))
-        let greenLow = counts(low, in: 0..<low.pixelsWide) { $0.greenComponent > 0.55 && $0.redComponent < 0.45 }
-        let greenHigh = counts(high, in: 0..<high.pixelsWide) { $0.greenComponent > 0.55 && $0.redComponent < 0.45 }
-        #expect(greenHigh > greenLow * 3)
+        let blueLow = pixels(low, matching: .systemBlue)
+        let blueHigh = pixels(high, matching: .systemBlue)
+        #expect(blueHigh > blueLow * 3)
     }
 
     @Test func textRightAlignedInFixedSlots() {

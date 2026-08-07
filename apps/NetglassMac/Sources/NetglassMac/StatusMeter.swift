@@ -1,7 +1,7 @@
 import AppKit
 
 /// AppKit-rendered menu-bar indicator: two thin horizontal bars stacked
-/// vertically (down = green, up = orange), filled with line segments
+/// vertically (down = blue, up = purple), filled with line segments
 /// (Little-Snitch style), each with its speed number on the same row.
 /// Drawn directly into an NSImage so the menu bar shows exactly this.
 enum StatusMeter {
