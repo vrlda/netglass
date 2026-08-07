@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Netglass",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     targets: [
         .target(name: "FlowModel", path: "packages/FlowModel/Sources/FlowModel"),
         .target(name: "Persistence",
