@@ -6,6 +6,7 @@ import Persistence
 public final class AppState: ObservableObject {
     @Published public private(set) var database: FlowDatabase?
     @Published public private(set) var bootstrapError: String?
+    @Published public var currentTab: MainTab = .monitor
     public let databaseURL: URL
     public let liveModel: LiveConnectionsModel
 
@@ -27,7 +28,10 @@ public final class AppState: ObservableObject {
         if let db {
             try? db.closeOrphanedFlows(endedAt: Date())
         }
-        self.liveModel = LiveConnectionsModel(sampler: Self.defaultSampler(), database: db)
+        let interval = UserDefaults.standard.double(forKey: "updateFrequency")
+        self.liveModel = LiveConnectionsModel(
+            sampler: Self.defaultSampler(), database: db,
+            interval: interval > 0 ? interval : 0.25)
     }
 
     public static nonisolated func databaseURL(in directory: URL) -> URL {
@@ -37,8 +41,31 @@ public final class AppState: ObservableObject {
     /// The app's sampling pipeline: real nettop/lsof subprocesses plus a
     /// process resolver walking proc_pidpath.
     public static nonisolated func defaultSampler() -> Sampler {
-        Sampler(nettopClient: ProcessNettopClient(),
+        // long-lived nettop stream: one subprocess, no per-tick spawn
+        Sampler(nettopClient: StreamingNettopClient(interval: 0.25),
                 lsofClient: ProcessLsofClient(),
                 resolver: ProcessResolver())
+    }
+}
+
+/// Sidebar tabs of the main window.
+public enum MainTab: String, CaseIterable, Identifiable, Hashable {
+    case monitor
+    case history
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .monitor: "Monitor"
+        case .history: "History"
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .monitor: "waveform.path.ecg"
+        case .history: "clock.arrow.circlepath"
+        }
     }
 }
