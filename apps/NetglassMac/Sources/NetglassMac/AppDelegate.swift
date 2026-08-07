@@ -185,14 +185,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let center = NotificationCenter.default
         center.addObserver(forName: NSWindow.didMoveNotification, object: window,
                            queue: .main) { note in
-            if let window = note.object as? NSWindow {
-                UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: Keys.windowFrame)
+            MainActor.assumeIsolated {
+                if let window = note.object as? NSWindow {
+                    UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: Keys.windowFrame)
+                }
             }
         }
         center.addObserver(forName: NSWindow.didResizeNotification, object: window,
                            queue: .main) { note in
-            if let window = note.object as? NSWindow {
-                UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: Keys.windowFrame)
+            MainActor.assumeIsolated {
+                if let window = note.object as? NSWindow {
+                    UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: Keys.windowFrame)
+                }
             }
         }
         mainWindowRef = window
