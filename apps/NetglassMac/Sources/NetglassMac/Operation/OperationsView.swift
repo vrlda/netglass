@@ -256,6 +256,8 @@ struct OperationReportView: View {
                     reportRow("Default route changed", report.defaultRouteChanged ? "yes" : "no")
                 }
                 .font(.system(size: 12, design: .monospaced))
+                .lineLimit(1)
+                .truncationMode(.tail)
             }
             if let exportError {
                 Text(exportError).font(.system(size: 11)).foregroundStyle(.red)
@@ -280,8 +282,12 @@ struct OperationReportView: View {
     }
 
     private func export() {
+        exportError = nil
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "operation-\(operation.session?.name ?? "export").json"
+        let safeName = (operation.session?.name ?? "export")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        panel.nameFieldStringValue = "operation-\(safeName).json"
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
