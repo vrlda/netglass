@@ -5,3 +5,5 @@ DerivedData/
 *.sqlite
 *.sqlite3
 build/
+
+docs/
