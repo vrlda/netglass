@@ -11,6 +11,7 @@ public enum AppSection: String, CaseIterable, Identifiable, Hashable {
     case captures
     case packetInspector
     case history
+    case operations
 
     public var id: String { rawValue }
 
@@ -24,6 +25,7 @@ public enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .captures: "Captures"
         case .packetInspector: "Packet Inspector"
         case .history: "History"
+        case .operations: "Operations"
         }
     }
 
@@ -37,6 +39,7 @@ public enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .captures: "record.circle"
         case .packetInspector: "rectangle.3.group"
         case .history: "clock.arrow.circlepath"
+        case .operations: "shield.lefthalf.filled"
         }
     }
 
@@ -50,6 +53,7 @@ public enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .captures: "6"
         case .packetInspector: "7"
         case .history: "8"
+        case .operations: "9"
         }
     }
 }

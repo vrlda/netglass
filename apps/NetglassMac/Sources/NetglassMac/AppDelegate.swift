@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let appVM = AppViewModel()
     let monitoring = MonitoringViewModel()
     let capture = PacketCaptureViewModel()
+    let operation = OperationViewModel()
     let rateTracker = AppRateTracker()
     private var statusItem: NSStatusItem!
     private var popover: NSPopover?
@@ -163,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environmentObject(appVM)
             .environmentObject(monitoring)
             .environmentObject(capture)
+            .environmentObject(operation)
             .environmentObject(rateTracker))
         let window = NSWindow(contentViewController: root)
         window.title = "Netglass"

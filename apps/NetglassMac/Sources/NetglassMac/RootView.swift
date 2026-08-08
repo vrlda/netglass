@@ -8,6 +8,7 @@ struct RootView: View {
     @EnvironmentObject private var appVM: AppViewModel
     @EnvironmentObject private var monitoring: MonitoringViewModel
     @EnvironmentObject private var capture: PacketCaptureViewModel
+    @EnvironmentObject private var operation: OperationViewModel
 
     @State private var inspectorFlow: LiveFlow?
     @State private var showPalette = false
@@ -73,12 +74,15 @@ struct RootView: View {
                     PacketInspectorView()
                 case .history:
                     HistoryTabView()
+                case .operations:
+                    OperationsView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environmentObject(appVM)
             .environmentObject(monitoring)
             .environmentObject(capture)
+            .environmentObject(operation)
 
             if appVM.inspectorVisible {
                 Divider()
