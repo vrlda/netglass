@@ -108,6 +108,39 @@ import Testing
     }
 
     @MainActor
+    @Test func quietAppsKeepLastRateUntilIdleTimeout() throws {
+        // nettop refreshes counters at 1 Hz while ticks run faster: between
+        // refreshes the totals are frozen. The app must keep its last rate
+        // (not emit 0), or rates flicker 0 -> value -> 0 -> value.
+        let tracker = AppRateTracker()
+        let t0 = Date(timeIntervalSince1970: 1_752_800_000)
+        let f1 = [try flow(process: "A", remoteText: "10.0.0.1", domain: nil, bytesSent: 1_000)]
+        tracker.update(apps: RealAgg.apps(from: f1), now: t0)
+        let f2 = [try flow(process: "A", remoteText: "10.0.0.1", domain: nil, bytesSent: 1_300)]
+        tracker.update(apps: RealAgg.apps(from: f2), now: t0.addingTimeInterval(0.5))
+        #expect(try #require(tracker.rates["/Applications/A.app/Contents/MacOS/A"]).up == 600)
+
+        // same totals 0.5 s later (between nettop refreshes): no new rate
+        tracker.update(apps: RealAgg.apps(from: f2), now: t0.addingTimeInterval(1.0))
+        #expect(tracker.rates["/Applications/A.app/Contents/MacOS/A"]?.up == 600)
+        #expect(tracker.activeApps(RealAgg.apps(from: f2)).map(\.name) == ["A"])
+    }
+
+    @MainActor
+    @Test func idleAppsDecayToZeroAfterQuietPeriod() throws {
+        let tracker = AppRateTracker()
+        let t0 = Date(timeIntervalSince1970: 1_752_800_000)
+        let f1 = [try flow(process: "A", remoteText: "10.0.0.1", domain: nil, bytesSent: 1_000)]
+        tracker.update(apps: RealAgg.apps(from: f1), now: t0)
+        let f2 = [try flow(process: "A", remoteText: "10.0.0.1", domain: nil, bytesSent: 1_300)]
+        tracker.update(apps: RealAgg.apps(from: f2), now: t0.addingTimeInterval(0.5))
+        // A stops moving entirely: past the quiet window its rate decays to 0
+        tracker.update(apps: RealAgg.apps(from: f2), now: t0.addingTimeInterval(4.0))
+        #expect(try #require(tracker.rates["/Applications/A.app/Contents/MacOS/A"]) == (0, 0))
+        #expect(tracker.activeApps(RealAgg.apps(from: f2)).isEmpty)
+    }
+
+    @MainActor
     @Test func activeAppsSortsByCurrentRateDescending() throws {
         // Recent-activity ranking: only apps with live traffic, most traffic
         // first — the list reorders as rates change.

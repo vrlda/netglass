@@ -29,6 +29,11 @@ public final class LiveConnectionsModel: ObservableObject {
     /// time, so a missed tick doesn't inflate the rate.
     private var lastTotals: (sent: UInt64, received: UInt64)?
     private var lastTickDate: Date?
+    /// When the totals last moved: nettop refreshes counters at ~1 Hz while
+    /// ticks run at 0.25 s, so three of four ticks see frozen counters and
+    /// must keep the last rate instead of reporting zero.
+    private var lastCounterChangeDate: Date?
+    private let idleTimeout: TimeInterval = 2.0
     /// Bytes of flows OPENED this tick: nettop counters are cumulative from
     /// connection start, so an opening flow's bytes are baseline, not traffic.
     private var openedBaseline: (sent: UInt64, received: UInt64) = (0, 0)
@@ -235,29 +240,40 @@ public final class LiveConnectionsModel: ObservableObject {
         let trafficReceived = received >= openedBaseline.received
             ? received - openedBaseline.received : 0
         if let last = lastTotals, let lastDate = lastTickDate {
-            let elapsed = now.timeIntervalSince(lastDate)
-            if elapsed > 0 {
-                let lastSent = last.sent >= removedBaseline.sent
-                    ? last.sent - removedBaseline.sent : 0
-                let lastReceived = last.received >= removedBaseline.received
-                    ? last.received - removedBaseline.received : 0
-                // Guard: empty previous snapshot + populated now = baselines
-                // only (fresh counters); no rate to report.
-                if lastSent > 0 || lastReceived > 0 || (trafficSent == 0 && trafficReceived == 0) {
+            if sent != last.sent || received != last.received {
+                // counters moved (nettop refresh): report the delta over real
+                // elapsed time; frozen counters keep the previous rate
+                let elapsed = now.timeIntervalSince(lastDate)
+                if elapsed > 0 {
+                    let lastSent = last.sent >= removedBaseline.sent
+                        ? last.sent - removedBaseline.sent : 0
+                    let lastReceived = last.received >= removedBaseline.received
+                        ? last.received - removedBaseline.received : 0
                     let down = trafficReceived >= lastReceived
                         ? Double(trafficReceived - lastReceived) / elapsed : 0
                     let up = trafficSent >= lastSent
                         ? Double(trafficSent - lastSent) / elapsed : 0
                     throughput = Throughput(bytesPerSecondDown: down, bytesPerSecondUp: up)
                 }
+                lastTotals = (sent, received)
+                lastTickDate = now
+                lastCounterChangeDate = now
             }
+        } else {
+            lastTotals = (sent, received)
+            lastTickDate = now   // first observation: baseline only, no rate yet
         }
-        lastTotals = (sent, received)
-        lastTickDate = now
+        // Idle decay: counters stopped moving (no traffic for a while) — the
+        // last rate must not linger forever.
+        if let lastChange = lastCounterChangeDate,
+           now.timeIntervalSince(lastChange) > idleTimeout,
+           throughput != .zero {
+            throughput = .zero
+        }
         openedBaseline = (0, 0)
         removedBaseline = (0, 0)
         // Chart history at 1 Hz: the live bar steps once per second even when
-        // sampling runs faster. The meter itself still updates every tick.
+        // sampling runs faster. The meter follows counter changes (~1 Hz).
         if ticksUntilHistorySample <= 1 {
             ticksUntilHistorySample = max(1, Int((1.0 / interval).rounded()))
             throughputHistory.append(ThroughputSample(

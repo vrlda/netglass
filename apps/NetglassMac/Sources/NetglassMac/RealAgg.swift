@@ -127,47 +127,50 @@ public enum RealAgg {
 }
 
 /// Per-app current-rate tracker: deltas between successive snapshots over
-/// real elapsed time. Rates start at zero until a second snapshot exists.
-/// Snapshots closer than `minInterval` are IGNORED (not even a baseline
-/// refresh): the flows publisher fires several times per sampling tick, and
-/// refreshing the baseline on each would push the next real measurement past
-/// `minInterval` forever at the default 0.25 s cadence.
+/// real elapsed time. nettop refreshes its counters at ~1 Hz while ticks and
+/// flow-publisher emissions run faster, so a rate is emitted ONLY when an
+/// app's totals actually moved (measured from that app's last change). Frozen
+/// totals keep the last rate; after `idleTimeout` of silence the rate decays
+/// to zero. Rates start at zero until a second snapshot exists.
 @MainActor
 public final class AppRateTracker: ObservableObject {
     @Published public private(set) var rates: [String: (up: Double, down: Double)] = [:]
 
     private let minInterval: TimeInterval
+    private let idleTimeout: TimeInterval
     private var lastTotals: [String: (sent: UInt64, received: UInt64)] = [:]
-    private var lastDate: Date?
+    private var lastDates: [String: Date] = [:]
 
-    public init(minInterval: TimeInterval = 0.5) {
+    public init(minInterval: TimeInterval = 0.5, idleTimeout: TimeInterval = 2.0) {
         self.minInterval = minInterval
+        self.idleTimeout = idleTimeout
     }
 
     public func update(apps: [AppAgg], now: Date = Date()) {
-        var totals: [String: (sent: UInt64, received: UInt64)] = [:]
+        var newRates = rates
         for app in apps {
-            totals[app.processPath] = (app.bytesSent, app.bytesReceived)
-        }
-        guard let lastDate, !lastTotals.isEmpty else {
-            lastTotals = totals
-            self.lastDate = now
-            return
-        }
-        let elapsed = now.timeIntervalSince(lastDate)
-        guard elapsed >= minInterval else { return }   // sub-interval noise
-        var newRates: [String: (up: Double, down: Double)] = [:]
-        for app in apps {
-            guard let last = lastTotals[app.processPath] else { continue }
-            let up = app.bytesSent >= last.sent
-                ? Double(app.bytesSent - last.sent) / elapsed : 0
-            let down = app.bytesReceived >= last.received
-                ? Double(app.bytesReceived - last.received) / elapsed : 0
-            newRates[app.processPath] = (up, down)
+            let totals: (sent: UInt64, received: UInt64) = (app.bytesSent, app.bytesReceived)
+            guard let prev = lastTotals[app.processPath] else {
+                lastTotals[app.processPath] = totals
+                lastDates[app.processPath] = now
+                continue
+            }
+            if prev.sent != totals.sent || prev.received != totals.received {
+                let elapsed = now.timeIntervalSince(lastDates[app.processPath] ?? now)
+                lastTotals[app.processPath] = totals
+                lastDates[app.processPath] = now
+                if elapsed >= minInterval {
+                    let up = totals.sent >= prev.sent
+                        ? Double(totals.sent - prev.sent) / elapsed : 0
+                    let down = totals.received >= prev.received
+                        ? Double(totals.received - prev.received) / elapsed : 0
+                    newRates[app.processPath] = (up, down)
+                }
+            } else if now.timeIntervalSince(lastDates[app.processPath] ?? now) >= idleTimeout {
+                newRates[app.processPath] = (0, 0)   // went quiet: decay to zero
+            }
         }
         rates = newRates
-        lastTotals = totals
-        self.lastDate = now
     }
 
     /// Apps with live traffic, ranked by current rate (most traffic first).
