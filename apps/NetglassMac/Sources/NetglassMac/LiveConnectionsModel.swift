@@ -82,6 +82,10 @@ public final class LiveConnectionsModel: ObservableObject {
     /// re-open every flow with a fresh flowID).
     var sampler: Sampler
     private var tickTask: Task<Void, Never>?
+    /// A cancelled loop still waits for its detached sampler. Delay a restart
+    /// until that work has drained so two tasks never mutate one tracker.
+    private var sampleInFlight = false
+    private var restartAfterSample = false
 
     public init(sampler: Sampler, database: FlowDatabase? = nil, interval: TimeInterval = 1.0,
                 historyCapacity: Int = 1200, domainResolver: DomainResolver = DomainResolver(),
@@ -103,6 +107,14 @@ public final class LiveConnectionsModel: ObservableObject {
 
     public func start() {
         guard tickTask == nil else { return }
+        guard !sampleInFlight else {
+            restartAfterSample = true
+            return
+        }
+        startLoop()
+    }
+
+    private func startLoop() {
         // A fresh session restarts the delta baseline: without this, a long
         // stop() gap would show the whole gap's traffic as one tick's rate.
         lastTotals = nil
@@ -137,10 +149,15 @@ public final class LiveConnectionsModel: ObservableObject {
         guard !Task.isCancelled else { return false }
         let sampler = self.sampler   // read on main actor; Sampler is @unchecked Sendable
         let events: [FlowEvent]
+        sampleInFlight = true
+        defer {
+            sampleInFlight = false
+            if restartAfterSample {
+                restartAfterSample = false
+                start()
+            }
+        }
         do {
-            // Detached task is unstructured and unreferenced: if sample()
-            // hangs, cancellation cannot interrupt it — a zombie task that
-            // runs to completion. Accepted M3 residual.
             events = try await Task.detached(priority: .utility) { try sampler.sample() }.value
         } catch {
             return false   // sampling failure: keep last-known state; retry next tick

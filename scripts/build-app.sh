@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIGURATION=release
 BUNDLE_DIR="$ROOT/build/Netglass.app"
 CONTENTS="$BUNDLE_DIR/Contents"
-VERSION="1.2.0"
+VERSION="1.2.1"
 
 echo "==> Building (swift build -c $CONFIGURATION)"
 swift build --package-path "$ROOT" -c "$CONFIGURATION"

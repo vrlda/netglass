@@ -58,4 +58,16 @@ import Testing
         #expect(PacketCaptureViewModel.filterExpression(scope: .protocolName, value: "UDP") == "udp")
         #expect(PacketCaptureViewModel.filterExpression(scope: .application, value: "Telegram") == "")
     }
+
+    @Test func elevatedCaptureScriptQuotesRuntimeArguments() {
+        let hostile = "example.com'; touch /tmp/pwned; #"
+        let script = PacketCaptureViewModel.safeElevatedScript
+        // Runtime values are passed after `--`; the script contains no
+        // interpolated hostile value and quotes every shell-bound argument.
+        #expect(!script.contains(hostile))
+        #expect(script.contains("quoted form of iface"))
+        #expect(script.contains("quoted form of filterExpression"))
+        #expect(script.contains("quoted form of outputFile"))
+        #expect(script.contains("quoted form of stopFile"))
+    }
 }

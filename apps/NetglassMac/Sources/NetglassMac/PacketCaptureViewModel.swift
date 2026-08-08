@@ -29,7 +29,7 @@ public struct CaptureSession: Identifiable, Equatable, Sendable {
     public let scope: CaptureScope
     public let scopeValue: String?
     public let interface: String
-    public let fileURL: URL
+    public var fileURL: URL
     public var fileSize: Int64
     public var packetCount: Int
     public var status: CaptureStatus
@@ -57,6 +57,12 @@ public final class PacketCaptureViewModel: ObservableObject {
     private var captureProcess: Process?
     private var lastPacketCount: Int?
     private var lastPacketCountDate: Date?
+    private var livePcapOffset: UInt64 = 0
+    private var livePcapRemainder = Data()
+    private var livePcapByteOrder: PcapByteOrder?
+    private var livePcapURL: URL?
+
+    private enum PcapByteOrder { case littleEndian, bigEndian }
 
     public init(interface: String? = nil) {
         self.activeInterface = interface ?? InterfaceStore.primary()
@@ -125,11 +131,19 @@ public final class PacketCaptureViewModel: ObservableObject {
         packetsHistory.removeAll()
         lastPacketCount = nil
         lastPacketCountDate = nil
+        livePcapOffset = 0
+        livePcapRemainder.removeAll(keepingCapacity: true)
+        livePcapByteOrder = nil
+        livePcapURL = nil
 
         let dir = Self.captureDirectory()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let fileName = "capture-\(Int(Date().timeIntervalSince1970)).pcap"
-        let fileURL = dir.appendingPathComponent(fileName)
+        // tcpdump adds a numeric suffix when `-C`/`-W` are enabled. Keep the
+        // base path for launch, then resolve the newest segment while recording.
+        let outputURL = dir.appendingPathComponent(fileName)
+        let usesRotation = self.rotationMB != nil && self.rotationFiles != nil
+        let fileURL = usesRotation ? outputURL.appendingPathExtension("0") : outputURL
         let filter = Self.filterExpression(scope: scope, value: value)
         let pidURL = dir.appendingPathComponent("\(fileName).pid")
         let stopURL = dir.appendingPathComponent("\(fileName).stop")
@@ -146,17 +160,16 @@ public final class PacketCaptureViewModel: ObservableObject {
         activeSession = session
         sessions.insert(session, at: 0)
 
-        let script = Self.elevatedScript(fileURL: fileURL.path, interface: iface,
-                                         filter: filter, pidFile: pidURL.path,
-                                         stopFile: stopURL.path,
-                                         rotationMB: rotationMB, rotationFiles: rotationFiles)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
+        // Values pass as argv, then AppleScript applies `quoted form of` at
+        // the sole boundary into its administrator shell.
+        process.arguments = ["-e", Self.safeElevatedScript, "--", iface, filter, outputURL.path,
+                             pidURL.path, stopURL.path,
+                             Self.rotationArguments(megabytes: self.rotationMB,
+                                                    files: self.rotationFiles)]
         process.terminationHandler = { [weak self] proc in
-            MainActor.assumeIsolated {
-                self?.onCaptureProcessExit(proc)
-            }
+            Task { @MainActor in self?.onCaptureProcessExit(proc) }
         }
         captureProcess = process
         do {
@@ -184,8 +197,12 @@ public final class PacketCaptureViewModel: ObservableObject {
     // MARK: - Internals
 
     private func tick() {
-        guard let session = activeSession else { return }
+        guard var session = activeSession else { return }
         let now = Date()
+        if let newest = Self.newestCaptureSegment(for: session) {
+            activeSession?.fileURL = newest
+            session.fileURL = newest
+        }
         activeSession?.duration = now.timeIntervalSince(session.startedAt)
         let size = (try? FileManager.default.attributesOfItem(
             atPath: session.fileURL.path)[.size] as? Int64) ?? 0
@@ -193,19 +210,24 @@ public final class PacketCaptureViewModel: ObservableObject {
         if let index = sessions.firstIndex(where: { $0.id == session.id }) {
             sessions[index] = activeSession!
         }
-        // real packet rate from the growing capture file
-        if let data = try? Data(contentsOf: session.fileURL),
-           let packets = try? PcapParser.parse(data) {
-            let count = packets.count
-            if let lastPacketCount, let lastPacketCountDate {
-                let dt = now.timeIntervalSince(lastPacketCountDate)
-                if dt > 0.2 {
-                    packetsPerSecond = Double(count - lastPacketCount) / dt
-                }
-            }
-            self.lastPacketCount = count
-            self.lastPacketCountDate = now
+        // Count only newly appended classic-pcap records. The old approach
+        // decoded the whole growing file twice per second on the main actor.
+        if livePcapURL != session.fileURL {
+            livePcapOffset = 0
+            livePcapRemainder.removeAll(keepingCapacity: true)
+            livePcapByteOrder = nil
+            livePcapURL = session.fileURL
+            lastPacketCount = nil
         }
+        let newPackets = consumeNewPcapRecords(at: session.fileURL)
+        if lastPacketCount != nil, let lastPacketCountDate {
+            let dt = now.timeIntervalSince(lastPacketCountDate)
+            if dt > 0.2 {
+                packetsPerSecond = Double(newPackets) / dt
+            }
+        }
+        lastPacketCount = 0
+        lastPacketCountDate = now
         packetsHistory.append(TrafficChartSample(id: now, up: packetsPerSecond, down: 0))
         if packetsHistory.count > 300 {
             packetsHistory.removeFirst(packetsHistory.count - 300)
@@ -218,6 +240,9 @@ public final class PacketCaptureViewModel: ObservableObject {
         captureProcess = nil
         guard var session = activeSession else { return }
         activeSession = nil
+        if let newest = Self.newestCaptureSegment(for: session) {
+            session.fileURL = newest
+        }
         let size = (try? FileManager.default.attributesOfItem(
             atPath: session.fileURL.path)[.size] as? Int64) ?? 0
         session.fileSize = size
@@ -247,6 +272,44 @@ public final class PacketCaptureViewModel: ObservableObject {
         return packets.count
     }
 
+    /// Incremental record counter for tcpdump's classic pcap output. Incomplete
+    /// records stay buffered until the next tick, so a file being written is
+    /// never decoded as corrupt and memory does not grow with capture duration.
+    private func consumeNewPcapRecords(at url: URL) -> Int {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return 0 }
+        defer { try? handle.close() }
+        guard (try? handle.seek(toOffset: livePcapOffset)) != nil,
+              let appended = try? handle.readToEnd() else { return 0 }
+        livePcapOffset += UInt64(appended.count)
+        livePcapRemainder.append(appended)
+        if livePcapByteOrder == nil {
+            guard livePcapRemainder.count >= 24 else { return 0 }
+            let magic = Array(livePcapRemainder.prefix(4))
+            switch magic {
+            case [0xd4, 0xc3, 0xb2, 0xa1], [0x4d, 0x3c, 0xb2, 0xa1]: livePcapByteOrder = .littleEndian
+            case [0xa1, 0xb2, 0xc3, 0xd4], [0xa1, 0xb2, 0x3c, 0x4d]: livePcapByteOrder = .bigEndian
+            default:
+                livePcapRemainder.removeAll(keepingCapacity: true)
+                return 0
+            }
+            livePcapRemainder.removeFirst(24)
+        }
+        guard let order = livePcapByteOrder else { return 0 }
+        var count = 0
+        while livePcapRemainder.count >= 16 {
+            let lengthBytes = livePcapRemainder[8..<12]
+            let length = lengthBytes.enumerated().reduce(UInt32(0)) { value, item in
+                let shift = order == .littleEndian ? UInt32(item.offset * 8) : UInt32((3 - item.offset) * 8)
+                return value | (UInt32(item.element) << shift)
+            }
+            let recordLength = 16 + Int(length)
+            guard livePcapRemainder.count >= recordLength else { break }
+            livePcapRemainder.removeFirst(recordLength)
+            count += 1
+        }
+        return count
+    }
+
     private static func captureDirectory() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory,
                                             in: .userDomainMask).first
@@ -257,6 +320,42 @@ public final class PacketCaptureViewModel: ObservableObject {
     private var rotationMB: Double?
     private var rotationFiles: Int?
 
+    static func rotationArguments(megabytes: Double?, files: Int?) -> String {
+        guard let megabytes, let files, megabytes > 0, files > 1 else { return "" }
+        return "-C \(Int(megabytes)) -W \(files)"
+    }
+
+    private static func newestCaptureSegment(for session: CaptureSession) -> URL? {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: session.fileURL.deletingLastPathComponent(),
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles])) ?? []
+        return urls.filter { $0.lastPathComponent == session.id || $0.lastPathComponent.hasPrefix(session.id + ".") }
+            .max { lhs, rhs in
+                let left = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                let right = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                return left < right
+            }
+    }
+
+    /// osascript receives all variable values as argv. `quoted form of` is the
+    /// sole boundary into its administrator shell; Swift never interpolates a
+    /// user-controlled value into shell syntax.
+    nonisolated static let safeElevatedScript = """
+    on run argv
+        set iface to item 1 of argv
+        set filterExpression to item 2 of argv
+        set outputFile to item 3 of argv
+        set pidFile to item 4 of argv
+        set stopFile to item 5 of argv
+        set rotationArguments to item 6 of argv
+        set tcpdumpCommand to quoted form of "/usr/sbin/tcpdump" & " -i " & quoted form of iface & " -nn " & rotationArguments & " -w " & quoted form of outputFile
+        if filterExpression is not "" then set tcpdumpCommand to tcpdumpCommand & " " & quoted form of filterExpression
+        set body to "rm -f " & quoted form of stopFile & "; " & tcpdumpCommand & " >/dev/null 2>&1 & echo $! > " & quoted form of pidFile & "; while [ ! -f " & quoted form of stopFile & " ]; do sleep 0.25; done; kill $(cat " & quoted form of pidFile & ") 2>/dev/null; wait"
+        do shell script "/bin/sh -c " & quoted form of body with administrator privileges
+    end run
+    """
+
     /// Shell wrapper: starts tcpdump in the background, writes its pid, waits
     /// for the stop file, then terminates it. Runs elevated via osascript so
     /// the user grants capture permission with one password prompt. Optional
@@ -264,6 +363,10 @@ public final class PacketCaptureViewModel: ObservableObject {
     nonisolated static func elevatedScript(fileURL: String, interface: String, filter: String,
                                pidFile: String, stopFile: String,
                                rotationMB: Double? = nil, rotationFiles: Int? = nil) -> String {
+        // Compatibility shim for callers built against the former API. The
+        // values are intentionally ignored; safe script values arrive as argv.
+        return safeElevatedScript
+        /*
         let escapedFile = fileURL.replacingOccurrences(of: "'", with: "'\\''")
         let escapedPid = pidFile.replacingOccurrences(of: "'", with: "'\\''")
         let escapedStop = stopFile.replacingOccurrences(of: "'", with: "'\\''")
@@ -281,5 +384,6 @@ public final class PacketCaptureViewModel: ObservableObject {
         kill $(cat \(escapedPid)) 2>/dev/null; wait'"
         with administrator privileges
         """
+        */
     }
 }
