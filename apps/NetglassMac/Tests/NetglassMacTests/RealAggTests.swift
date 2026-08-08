@@ -178,7 +178,7 @@ import Testing
 
     @Test func aggregateBucketsThreeSecondWindows() {
         // 6 seconds of 1s history → 2 buckets of 3s (sums)
-        let t = Date(timeIntervalSince1970: 1_752_800_000)
+        let t = Date(timeIntervalSince1970: 1_752_800_001)
         let history = [
             ThroughputSample(date: t, bytesPerSecondDown: 10, bytesPerSecondUp: 1),
             ThroughputSample(date: t.addingTimeInterval(1), bytesPerSecondDown: 20, bytesPerSecondUp: 2),
@@ -196,7 +196,7 @@ import Testing
     }
 
     @Test func aggregateKeepsNewestBucketsAtCapacity() {
-        let t = Date(timeIntervalSince1970: 1_752_800_000)
+        let t = Date(timeIntervalSince1970: 1_752_800_001)
         let history = (0..<9).map { i in
             ThroughputSample(date: t.addingTimeInterval(TimeInterval(i)),
                              bytesPerSecondDown: 10, bytesPerSecondUp: 1)
@@ -208,7 +208,7 @@ import Testing
     }
 
     @Test func aggregateKeepsCandleIdentityWhenWindowRolls() {
-        let t = Date(timeIntervalSince1970: 1_752_800_000)
+        let t = Date(timeIntervalSince1970: 1_752_800_001)
         let history = (0..<9).map { i in
             ThroughputSample(date: t.addingTimeInterval(TimeInterval(i)),
                              bytesPerSecondDown: Double(i), bytesPerSecondUp: 0)
@@ -223,10 +223,29 @@ import Testing
         #expect(after.map(\.id) == before.dropFirst().map(\.id) + [after.last!.id])
     }
 
+    @Test func aggregateBucketsAreWallClockAligned() {
+        // History-buffer trimming drops the oldest sample every second once
+        // the buffer is full. Bucket membership must be wall-clock based, so
+        // trimming never shifts which samples a bucket sums — otherwise every
+        // bar re-morphs on every tick.
+        let t = Date(timeIntervalSince1970: 1_752_800_000)
+        let full = (0..<15).map { i in
+            ThroughputSample(date: t.addingTimeInterval(TimeInterval(i)),
+                             bytesPerSecondDown: Double(i), bytesPerSecondUp: 0)
+        }
+        let trimmed = Array(full.dropFirst())   // oldest sample dropped
+        let a = TrafficHistory.aggregate(full, bucketSeconds: 5, capacity: 10)
+        let b = TrafficHistory.aggregate(trimmed, bucketSeconds: 5, capacity: 10)
+        // the wall-clock bucket [t+5, t+10) holds samples 5...9 = 35 either way
+        #expect(a[1].down == 35)
+        #expect(b[1].down == 35)
+        #expect(a[1].id == b[1].id)
+    }
+
     @Test func aggregateEmitsGrowingPartialBucket() {
         // 7 samples in 3s buckets → 2 complete + 1 partial; the partial is
         // the live bar that grows with traffic inside the current window.
-        let t = Date(timeIntervalSince1970: 1_752_800_000)
+        let t = Date(timeIntervalSince1970: 1_752_800_001)
         let history = (0..<7).map { i in
             ThroughputSample(date: t.addingTimeInterval(TimeInterval(i)),
                              bytesPerSecondDown: 10, bytesPerSecondUp: 1)

@@ -224,33 +224,36 @@ public enum TrafficHistory {
     }
 
     /// Aggregates per-second history into fixed-width buckets (e.g. 5 s each),
-    /// keeping the last `capacity` buckets. The trailing PARTIAL bucket is
-    /// emitted too — that's the live bar that grows as traffic accumulates
-    /// inside the current window. The y-scale is a held peak (no re-fit
-    /// jumps), so growth stays smooth. The live chart uses 60 × 5 s = 5 min.
+    /// keeping the last `capacity` buckets. Buckets are aligned to WALL-CLOCK
+    /// time, so trimming the history buffer (which drops the oldest sample
+    /// every second once full) never shifts which samples a bucket sums —
+    /// completed candles keep their value and identity forever. The trailing
+    /// PARTIAL bucket is emitted too — that's the live bar that grows as
+    /// traffic accumulates inside the current window. The y-scale is fixed,
+    /// so growth stays smooth. The live chart uses 60 × 5 s = 5 min.
     public static func aggregate(_ history: [ThroughputSample],
                                  bucketSeconds: Int, capacity: Int) -> [TrafficChartSample] {
         guard !history.isEmpty else { return [] }
+        let width = TimeInterval(max(1, bucketSeconds))
         var buckets: [TrafficChartSample] = []
+        var bucketStart: Date?
         var accUp = 0.0
         var accDown = 0.0
-        var count = 0
-        var bucketStart: Date?
         for sample in history {
-            if count == 0 { bucketStart = sample.date }
-            accUp += sample.bytesPerSecondUp
-            accDown += sample.bytesPerSecondDown
-            count += 1
-            if count == bucketSeconds {
-                buckets.append(TrafficChartSample(id: bucketStart ?? sample.date,
-                                                   up: accUp, down: accDown))
+            let start = alignedBucketStart(sample.date, width: width)
+            if start != bucketStart {
+                if let bucketStart {
+                    buckets.append(TrafficChartSample(id: bucketStart,
+                                                       up: accUp, down: accDown))
+                }
+                bucketStart = start
                 accUp = 0
                 accDown = 0
-                count = 0
-                bucketStart = nil
             }
+            accUp += sample.bytesPerSecondUp
+            accDown += sample.bytesPerSecondDown
         }
-        if count > 0, let bucketStart {
+        if let bucketStart {
             buckets.append(TrafficChartSample(id: bucketStart,
                                                up: accUp, down: accDown)) // growing live bar
         }
@@ -258,6 +261,13 @@ public enum TrafficHistory {
             buckets.removeFirst(buckets.count - capacity)
         }
         return buckets
+    }
+
+    /// The start of the wall-clock bucket containing `date` (e.g. 14:05:03 in
+    /// 5 s buckets → 14:05:00). Stable across history trims and cadence drift.
+    static func alignedBucketStart(_ date: Date, width: TimeInterval) -> Date {
+        let t = date.timeIntervalSinceReferenceDate
+        return Date(timeIntervalSinceReferenceDate: (t / width).rounded(.down) * width)
     }
 
     public static func bucketSamples(_ buckets: [TrafficBucket],
