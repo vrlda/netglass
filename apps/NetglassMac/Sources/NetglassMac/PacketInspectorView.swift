@@ -7,6 +7,7 @@ struct PacketInspectorView: View {
     @EnvironmentObject private var capture: PacketCaptureViewModel
     @EnvironmentObject private var liveModel: LiveConnectionsModel
     @State private var packets: [PacketRecord] = []
+    @State private var credentialHits: [CredentialHit] = []
     @State private var selectedPacketID: Int?
     @State private var selectedFieldID: String?
     @State private var displayFilter = ""
@@ -33,6 +34,7 @@ struct PacketInspectorView: View {
         VStack(spacing: 0) {
             toolbar
             Divider()
+            sensitiveSection
             if packets.isEmpty {
                 EmptyStateView(symbol: "rectangle.3.group",
                                title: "No capture open",
@@ -76,6 +78,7 @@ struct PacketInspectorView: View {
                 previous: index > 0 ? raw[index - 1] : nil))
         }
         packets = records
+        credentialHits = CredentialScan.scan(records)
         fileName = url.lastPathComponent
         selectedPacketID = nil
         selectedFieldID = nil
@@ -167,6 +170,30 @@ struct PacketInspectorView: View {
             + "\(packet.protocolName)\t\(packet.length)\t\(packet.info)"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    // MARK: - Sensitive data
+
+    private var sensitiveSection: some View {
+        Group {
+            if !credentialHits.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sensitive data (\(credentialHits.count))")
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange)
+                    ForEach(credentialHits) { hit in
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 9)).foregroundStyle(.orange)
+                            Text("#\(hit.packetID) \(hit.kind) — \(hit.detail)")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(8)
+                .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            }
+        }
     }
 
     // MARK: - Top pane: packet list
