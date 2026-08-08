@@ -13,6 +13,10 @@ public final class LiveConnectionsModel: ObservableObject {
     @Published public private(set) var resolutionEvents: [ResolutionEvent] = []
     @Published public var searchText: String = ""
 
+    /// Optional observer for operation sessions: receives one batch of
+    /// OperationEvents per tick (connections + DNS resolutions).
+    public var operationSink: (([OperationEvent]) -> Void)?
+
     /// Rolling window of per-second throughput samples for the traffic chart.
     /// History is decimated to 1 Hz (see updateThroughput), so 1200 samples =
     /// the 20-minute live window (60 buckets x 5 s = 5 minutes shown).
@@ -125,6 +129,7 @@ public final class LiveConnectionsModel: ObservableObject {
         guard !Task.isCancelled else { return }
         apply(events)
         updateThroughput(now: Date())
+        let resolutionStart = resolutionEvents.count
         let domains = await enrichDomains(for: events)
         // Persistence is best-effort and off the main actor: a failing ingest
         // (disk full, schema mismatch) must never break the live loop. The
@@ -135,6 +140,43 @@ public final class LiveConnectionsModel: ObservableObject {
             let domainsToPersist = domains
             Task.detached(priority: .utility) {
                 try? db.ingest(eventsToPersist, domains: domainsToPersist)
+            }
+        }
+        // Operation observer: forward this tick's flow opens/closes and the
+        // DNS resolutions just produced by enrichment. Runs on the main actor.
+        if let operationSink {
+            var opEvents: [OperationEvent] = []
+            let now = Date()
+            for event in events {
+                switch event {
+                case .flowOpened(let opened):
+                    guard let process = opened.process else { continue }
+                    opEvents.append(.connection(
+                        opened: true, date: now,
+                        process: process.executablePath.split(separator: "/").last.map(String.init) ?? "?",
+                        executablePath: process.executablePath,
+                        remote: opened.remote, interface: opened.interface,
+                        transport: opened.transport, bytes: opened.bytesSent + opened.bytesReceived))
+                case .flowClosed(let closed):
+                    if let index = flows.firstIndex(where: { $0.flowID == closed.flowID }) {
+                        let flow = flows[index]
+                        opEvents.append(.connection(
+                            opened: false, date: now,
+                            process: flow.processName,
+                            executablePath: flow.executablePath,
+                            remote: flow.remote, interface: flow.interface,
+                            transport: flow.transport, bytes: flow.bytesSent + flow.bytesReceived))
+                    }
+                case .flowUpdated:
+                    break
+                }
+            }
+            for resolution in resolutionEvents[resolutionStart...] {
+                opEvents.append(.dns(date: resolution.date, process: resolution.processName,
+                                     domain: resolution.domain ?? "?", ip: resolution.ip))
+            }
+            if !opEvents.isEmpty {
+                operationSink(opEvents)
             }
         }
     }
