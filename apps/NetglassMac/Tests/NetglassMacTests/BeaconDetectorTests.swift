@@ -54,4 +54,16 @@ import Testing
         _ = detector.ingest(observations)
         #expect(detector.ingest(observations).isEmpty)
     }
+
+    @Test func maxJitterConfigurationHonored() {
+        let t0 = Date(timeIntervalSince1970: 1_752_800_000)
+        let observations = [0, 60, 120, 186].map { i in
+            BeaconObservation(process: "helper", destination: "198.51.100.24:443",
+                              date: t0.addingTimeInterval(TimeInterval(i)), bytes: 100)
+        }
+        var strict = BeaconDetector(maxJitter: 0.01)   // jitter ~0.07 exceeds
+        #expect(strict.ingest(observations).isEmpty)
+        var defaultDetector = BeaconDetector()         // 0.07 < 0.35: default still emits
+        #expect(defaultDetector.ingest(observations).count == 1)
+    }
 }

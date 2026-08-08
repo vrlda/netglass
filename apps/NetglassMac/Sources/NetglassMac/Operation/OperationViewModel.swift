@@ -36,6 +36,8 @@ public final class OperationViewModel: ObservableObject {
                                    scope: scope, snapshotIn: snapshot)
         warnings = []
         listeners = []
+        periodic = []
+        beaconDetector = BeaconDetector()
         lastListeners = snapshot.listeners
         currentResolvers = snapshot.resolvers
         armTimers()
@@ -83,6 +85,8 @@ public final class OperationViewModel: ObservableObject {
         session = nil
         warnings = []
         listeners = []
+        periodic = []
+        beaconDetector = BeaconDetector()
     }
 
     public func export(to url: URL) throws {

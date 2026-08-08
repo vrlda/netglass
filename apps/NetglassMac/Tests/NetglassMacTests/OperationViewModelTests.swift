@@ -63,4 +63,27 @@ import Testing
         } == true)
         #expect(vm.warnings.contains { $0.rule == .listenerExposure })
     }
+
+    @MainActor
+    @Test func periodicStateResetsBetweenOperations() {
+        let vm = OperationViewModel(snapshotProvider: { OperationSnapshot(date: Date()) })
+        let t0 = Date(timeIntervalSince1970: 1_752_800_000)
+        let endpoint = NetworkEndpoint(address: IPAddress(text: "198.51.100.24")!, port: 443)
+        func beacon(_ i: Int) -> OperationEvent {
+            .connection(opened: true, date: t0.addingTimeInterval(TimeInterval(i) * 60),
+                        process: "helper", executablePath: "/bin/helper",
+                        remote: endpoint, interface: "utun4", transport: .tcp, bytes: 100)
+        }
+        vm.start(name: "Op 1", expectedTunnel: "utun4", scope: OperationScope())
+        vm.ingest((0..<4).map(beacon))
+        #expect(vm.periodic.count == 1)
+        vm.stop(liveFlows: [])
+        vm.discard()
+        vm.start(name: "Op 2", expectedTunnel: "utun4", scope: OperationScope())
+        #expect(vm.periodic.isEmpty)
+        vm.ingest((0..<3).map(beacon))
+        #expect(vm.periodic.isEmpty)   // old keys must not re-emit early
+        vm.ingest([beacon(3)])
+        #expect(vm.periodic.count == 1)   // 4 fresh observations in the new session
+    }
 }

@@ -49,16 +49,16 @@ public struct BeaconDetector {
         }
         for (key, entries) in history where !emitted.contains(key) {
             guard entries.count >= minOccurrences,
-                  let pattern = Self.pattern(for: key, entries: entries) else { continue }
+                  let pattern = pattern(for: key, entries: entries) else { continue }
             emitted.insert(key)
             patterns.append(pattern)
         }
         return patterns
     }
 
-    static func pattern(for key: String, entries: [BeaconObservation]) -> PeriodicPattern? {
+    func pattern(for key: String, entries: [BeaconObservation]) -> PeriodicPattern? {
         let sorted = entries.sorted { $0.date < $1.date }
-        guard sorted.count >= 4 else { return nil }
+        guard sorted.count >= minOccurrences else { return nil }
         var intervals: [Double] = []
         for i in 1..<sorted.count {
             intervals.append(sorted[i].date.timeIntervalSince(sorted[i - 1].date))
@@ -67,7 +67,7 @@ public struct BeaconDetector {
         guard mean > 0 else { return nil }
         let variance = intervals.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(intervals.count)
         let jitter = variance.squareRoot() / mean
-        guard jitter < 0.35 else { return nil }
+        guard jitter < maxJitter else { return nil }
         let parts = key.split(separator: "|", maxSplits: 1)
         let payload = Double(sorted.reduce(0) { $0 + $1.bytes }) / Double(sorted.count)
         return PeriodicPattern(id: key,
