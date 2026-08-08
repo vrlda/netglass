@@ -57,4 +57,9 @@ import Testing
         let ip = try #require(IPAddress([192, 168, 0, 1]))
         #expect(ip.text == "192.168.0.1")
     }
+
+    @Test func bytesMatchParsedText() {
+        #expect(IPAddress(text: "192.168.1.42")!.bytes == [192, 168, 1, 42])
+        #expect(IPAddress(text: "2001:db8::1")!.bytes.count == 16)
+    }
 }
