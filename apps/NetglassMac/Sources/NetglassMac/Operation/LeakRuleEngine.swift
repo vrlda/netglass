@@ -18,7 +18,7 @@ public struct LeakRuleEngine {
             switch event {
             case .connection(let opened, let date, let process, _,
                              let remote, let interface, _, _):
-                if session.endedAt != nil {
+                if let endedAt = session.endedAt, date > endedAt {
                     warnings.append(LeakWarning(
                         rule: .trafficAfterStop, severity: .critical,
                         title: "Traffic continuing after operation stopped",
@@ -54,7 +54,8 @@ public struct LeakRuleEngine {
                         details: ["Process: \(process)", "Destination: \(remote.address.text):\(remote.port)"]))
                 }
             case .dns(let date, let process, let domain, _):
-                if tunnelExpected && date.timeIntervalSince(session.startedAt) < preTunnelGrace {
+                if tunnelExpected && date >= session.startedAt
+                    && date.timeIntervalSince(session.startedAt) < preTunnelGrace {
                     warnings.append(LeakWarning(
                         rule: .preTunnelDNS, severity: .warning,
                         title: "DNS query before tunnel readiness",

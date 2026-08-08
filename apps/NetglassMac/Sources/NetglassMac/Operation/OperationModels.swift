@@ -48,6 +48,7 @@ public struct OperationScope: Codable, Equatable, Sendable {
     }
 
     public func verdict(ip: [UInt8], domain: String?) -> ScopeVerdict {
+        if isLoopback(ip) { return .unknown }
         if excludedIPs.contains(where: { parseAndMatch($0, ip) })
             || excludedDomains.contains(where: { domain?.lowercased() == $0.lowercased() }) {
             return .excluded
@@ -60,6 +61,12 @@ public struct OperationScope: Codable, Equatable, Sendable {
             return .unknown
         }
         return .outOfScope
+    }
+
+    private func isLoopback(_ ip: [UInt8]) -> Bool {
+        if ip.count == 4 { return ip[0] == 127 }
+        if ip.count == 16 { return ip[0...14].allSatisfy { $0 == 0 } && ip[15] == 1 }
+        return false
     }
 
     private func domainMatchesAllowed(_ domain: String?) -> Bool {
