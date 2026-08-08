@@ -52,8 +52,9 @@ public struct OperationScope: Codable, Equatable, Sendable {
     /// quoted values stripped. Everything else is ignored. Delegates to the
     /// plain-line classifier, so classification stays consistent.
     public static func parse(yaml: String) -> OperationScope {
+        enum Section { case none, allowed, excluded }
         var lines: [String] = []
-        var excluded = false
+        var section = Section.none
         for rawLine in yaml.split(separator: "\n", omittingEmptySubsequences: true) {
             var line = String(rawLine)
             if let hash = line.firstIndex(of: "#") { line = String(line[..<hash]) }
@@ -61,14 +62,24 @@ public struct OperationScope: Codable, Equatable, Sendable {
             guard !line.isEmpty else { continue }
             if line.hasSuffix(":") {
                 let key = String(line.dropLast()).trimmingCharacters(in: .whitespaces).lowercased()
-                excluded = key == "excluded"
+                // Only recognized section keys switch the list; items under
+                // unknown keys (typos) are ignored, never flipped to allowed.
+                switch key {
+                case "allowed": section = .allowed
+                case "excluded": section = .excluded
+                default: section = .none
+                }
                 continue
             }
             guard line.hasPrefix("-") else { continue }
             let value = String(line.dropFirst()).trimmingCharacters(in: .whitespaces)
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
             guard !value.isEmpty else { continue }
-            lines.append(excluded ? "excluded: \(value)" : value)
+            switch section {
+            case .allowed: lines.append(value)
+            case .excluded: lines.append("excluded: \(value)")
+            case .none: break
+            }
         }
         return parse(lines: lines)
     }
