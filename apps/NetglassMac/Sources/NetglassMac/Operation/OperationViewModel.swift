@@ -70,7 +70,7 @@ public final class OperationViewModel: ObservableObject {
     }
 
     public func export(to url: URL) throws {
-        guard let session else { return }
+        guard let session else { throw OperationExportError.noActiveSession }
         let bundle = OperationBundle(operation: session,
                                      warnings: session.warnings,
                                      events: session.events,
@@ -79,6 +79,10 @@ public final class OperationViewModel: ObservableObject {
                                      cleanupReport: session.cleanupReport)
         let data = try FlowJSON.encoder.encode(bundle)
         try data.write(to: url, options: .atomic)
+    }
+
+    public enum OperationExportError: Error, Equatable {
+        case noActiveSession
     }
 
     private func armTimers() {
@@ -127,6 +131,9 @@ public final class OperationViewModel: ObservableObject {
                 action: .closed)))
         }
         lastListeners = current
+        if events.isEmpty && current.map(Self.listenerKey) == oldKeys.sorted() {
+            return   // nothing changed: don't re-publish
+        }
         listeners = current.map {
             ListeningPort(process: $0.processName, pid: $0.pid, address: $0.address,
                           port: $0.port, proto: $0.transport.rawValue, exposure: exposureText($0),
