@@ -39,7 +39,11 @@ import Testing
         let data = try Data(contentsOf: url)
         let bundle = try FlowJSON.decoder.decode(OperationBundle.self, from: data)
         #expect(bundle.operation.name == "Op")
+        #expect(bundle.operation.endedAt != nil)
+        #expect(bundle.operation.cleanupReport != nil)
+        #expect(bundle.snapshotOut != nil)
         #expect(!bundle.events.isEmpty)
+        #expect(!bundle.warnings.isEmpty)   // preTunnelDNS fires: utun4 + DNS within grace
     }
 
     @MainActor
