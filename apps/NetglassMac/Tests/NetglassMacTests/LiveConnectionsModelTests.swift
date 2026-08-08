@@ -221,7 +221,11 @@ import Testing
     }
 
     @MainActor
-    @Test func recordsThroughputHistoryPerTick() async throws {        let dir = FileManager.default.temporaryDirectory
+    @Test func recordsHistoryAtOneHz() async throws {
+        // Chart history is decimated to 1 Hz: at the default 0.25 s interval
+        // every 4th tick records, so the chart's live bar steps once per
+        // second instead of once per tick.
+        let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("netglass-history-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -237,7 +241,13 @@ import Testing
 
         model.sampler.nettopClient = FileNettopClient(url: dir.appendingPathComponent("nettop-2.txt"))
         model.sampler.lsofClient = FileLsofClient(url: dir.appendingPathComponent("lsof-2.txt"))
+        // tick 2 lands within the same second: no new history sample
         await model.runOnce()
+        #expect(model.throughputHistory.count == 1)
+        // ticks 3-5 complete the second: tick 5 appends
+        for _ in 0..<3 {
+            await model.runOnce()
+        }
         #expect(model.throughputHistory.count == 2)
         #expect(model.throughputHistory[1].bytesPerSecondDown == model.throughput.bytesPerSecondDown)
         #expect(model.throughputHistory[1].bytesPerSecondUp == model.throughput.bytesPerSecondUp)
@@ -257,7 +267,8 @@ import Testing
             nettopClient: FileNettopClient(url: dir.appendingPathComponent("nettop-1.txt")),
             lsofClient: FileLsofClient(url: dir.appendingPathComponent("lsof-1.txt")),
             resolver: TestResolver()), historyCapacity: 3)
-        for _ in 0..<5 {
+        // appends happen at ticks 1, 5, 9, 13 → trimmed to the last 3
+        for _ in 0..<13 {
             await model.runOnce()
         }
         #expect(model.throughputHistory.count == 3)

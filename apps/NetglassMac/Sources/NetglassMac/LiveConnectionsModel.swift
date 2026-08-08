@@ -13,9 +13,13 @@ public final class LiveConnectionsModel: ObservableObject {
     @Published public private(set) var resolutionEvents: [ResolutionEvent] = []
     @Published public var searchText: String = ""
 
-    /// Rolling window of per-tick throughput samples for the traffic chart.
-    /// 1200 samples at 0.25 s = the 5-minute live window (60 buckets x 20).
+    /// Rolling window of per-second throughput samples for the traffic chart.
+    /// History is decimated to 1 Hz (see updateThroughput), so 1200 samples =
+    /// the 20-minute live window (60 buckets x 5 s = 5 minutes shown).
     private let historyCapacity: Int
+    /// Ticks left until the next 1 Hz history sample. First tick records
+    /// immediately, then once per second of ticks (4 at 0.25 s, 2 at 0.5 s).
+    private var ticksUntilHistorySample = 1
     /// Closed flows older than this drop out of the live table (history keeps
     /// them). Bound the in-memory list for long-running sessions.
     private let evictionTTL: TimeInterval
@@ -72,12 +76,9 @@ public final class LiveConnectionsModel: ObservableObject {
         self.evictionTTL = evictionTTL
     }
 
-    /// Samples per 5-second chart bucket at the current interval (20 at
-    /// 0.25 s, 10 at 0.5 s, 5 at 1 s, 2 at 2 s, 1 at 5 s). The live bar grows
-    /// once per sample.
-    public var samplesPerBucket: Int {
-        max(1, Int((5.0 / interval).rounded()))
-    }
+    /// Chart history is recorded at 1 Hz, so a 5-second bucket always spans
+    /// exactly 5 samples regardless of the sampling interval.
+    public var samplesPerBucket: Int { 5 }
 
     public func start() {
         guard tickTask == nil else { return }
@@ -255,11 +256,18 @@ public final class LiveConnectionsModel: ObservableObject {
         lastTickDate = now
         openedBaseline = (0, 0)
         removedBaseline = (0, 0)
-        throughputHistory.append(ThroughputSample(
-            date: now, bytesPerSecondDown: throughput.bytesPerSecondDown,
-            bytesPerSecondUp: throughput.bytesPerSecondUp))
-        if throughputHistory.count > historyCapacity {
-            throughputHistory.removeFirst(throughputHistory.count - historyCapacity)
+        // Chart history at 1 Hz: the live bar steps once per second even when
+        // sampling runs faster. The meter itself still updates every tick.
+        if ticksUntilHistorySample <= 1 {
+            ticksUntilHistorySample = max(1, Int((1.0 / interval).rounded()))
+            throughputHistory.append(ThroughputSample(
+                date: now, bytesPerSecondDown: throughput.bytesPerSecondDown,
+                bytesPerSecondUp: throughput.bytesPerSecondUp))
+            if throughputHistory.count > historyCapacity {
+                throughputHistory.removeFirst(throughputHistory.count - historyCapacity)
+            }
+        } else {
+            ticksUntilHistorySample -= 1
         }
     }
 }

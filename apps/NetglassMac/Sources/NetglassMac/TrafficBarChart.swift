@@ -1,9 +1,8 @@
 import SwiftUI
 
 /// Up/down traffic timeline: upload extends up from the center baseline,
-/// download extends down. SwiftUI-native bars so new buckets SLIDE in instead
-/// of stepping, and a peak-hold scale so the y-axis doesn't re-fit (jump)
-/// every tick. Paused state dims the whole chart.
+/// download extends down. Fixed scale (never re-fits, so bars never jump);
+/// new buckets SLIDE in with stable candle identities. Paused dims the chart.
 struct TrafficBarChart: View {
     let samples: [TrafficChartSample]
     let paused: Bool
@@ -14,11 +13,9 @@ struct TrafficBarChart: View {
     var capacity: Int?
 
     @State private var hoverID: TrafficChartSample.ID?
-    /// Auto-fitting scale: expands on new bucket highs (bars clamp at full
-    /// height meanwhile), decays 15% per completed bucket. All changes
-    /// animate, so bars glide instead of jumping.
-    @State private var scale: Double = NetglassMetrics.chartPeak
-    @State private var lastBucketID: TrafficChartSample.ID?
+    /// Fixed full-scale for every chart (5 MB/s per bucket): old candles
+    /// never rescale, so bars only change with real traffic.
+    private let scale = NetglassMetrics.chartPeak
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var slots: Int { capacity ?? max(samples.count, 1) }
@@ -42,7 +39,6 @@ struct TrafficBarChart: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .trailing)   // right-anchored
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: samples)
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: scale)
 
                     if let hoverID,
                        let hoverIndex = samples.firstIndex(where: { $0.id == hoverID }) {
@@ -57,9 +53,6 @@ struct TrafficBarChart: View {
                 Spacer()
                 Text(rightLabel).font(.system(size: 9)).foregroundStyle(.tertiary)
             }
-        }
-        .onChange(of: samples) { _, _ in
-            updateScale()
         }
     }
 
@@ -121,21 +114,6 @@ struct TrafficBarChart: View {
         .offset(x: 8, y: 4)
     }
 
-
-    /// Per-bucket scale adjustment: never re-fits within a bucket, so the
-    /// growing candle caps at full height instead of moving the scale.
-    private func updateScale() {
-        let windowMax = samples.map { max($0.up, $0.down) }.max() ?? 0
-        guard let newestID = samples.last?.id, newestID != lastBucketID else { return }
-        lastBucketID = newestID
-        if samples.count <= 1 {
-            scale = max(NetglassMetrics.chartPeak, windowMax)
-        } else if windowMax > scale {
-            scale = windowMax          // new bucket high: expand
-        } else {
-            scale = max(NetglassMetrics.chartPeak * 0.02, scale * 0.85)   // slow decay
-        }
-    }
 
     private func timeAgo(_ seconds: Int) -> String {
         guard seconds > 0 else { return "now" }

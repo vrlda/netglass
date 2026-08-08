@@ -126,17 +126,18 @@ struct MenuBarPopoverView: View {
     // MARK: - Recent activity
 
     private var recentActivity: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text("Recent Activity")
+        let active = rateTracker.activeApps(apps).prefix(4)
+        return VStack(alignment: .leading, spacing: 1) {
+            Text("Active Apps")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 3)
-            if apps.isEmpty {
+            if active.isEmpty {
                 Text("No traffic observed yet")
                     .font(.system(size: 11)).foregroundStyle(.tertiary)
                     .padding(.vertical, 4)
             } else {
-                ForEach(apps.prefix(4)) { app in
+                ForEach(active) { app in
                     let rate = rateTracker.rates[app.processPath] ?? (0, 0)
                     Button {
                         appVM.selectedSection = .applications

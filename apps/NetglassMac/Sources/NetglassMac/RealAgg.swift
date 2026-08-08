@@ -128,10 +128,10 @@ public enum RealAgg {
 
 /// Per-app current-rate tracker: deltas between successive snapshots over
 /// real elapsed time. Rates start at zero until a second snapshot exists.
-/// Snapshots closer than `minInterval` refresh the baseline without emitting
-/// a rate — the flows publisher fires several times per sampling tick (one
-/// mutation per event), and those sub-tick deltas would otherwise read as
-/// near-zero rates.
+/// Snapshots closer than `minInterval` are IGNORED (not even a baseline
+/// refresh): the flows publisher fires several times per sampling tick, and
+/// refreshing the baseline on each would push the next real measurement past
+/// `minInterval` forever at the default 0.25 s cadence.
 @MainActor
 public final class AppRateTracker: ObservableObject {
     @Published public private(set) var rates: [String: (up: Double, down: Double)] = [:]
@@ -149,23 +149,37 @@ public final class AppRateTracker: ObservableObject {
         for app in apps {
             totals[app.processPath] = (app.bytesSent, app.bytesReceived)
         }
-        if let lastDate, !lastTotals.isEmpty {
-            let elapsed = now.timeIntervalSince(lastDate)
-            if elapsed >= minInterval {
-                var newRates: [String: (up: Double, down: Double)] = [:]
-                for app in apps {
-                    guard let last = lastTotals[app.processPath] else { continue }
-                    let up = app.bytesSent >= last.sent
-                        ? Double(app.bytesSent - last.sent) / elapsed : 0
-                    let down = app.bytesReceived >= last.received
-                        ? Double(app.bytesReceived - last.received) / elapsed : 0
-                    newRates[app.processPath] = (up, down)
-                }
-                rates = newRates
-            }
+        guard let lastDate, !lastTotals.isEmpty else {
+            lastTotals = totals
+            self.lastDate = now
+            return
         }
+        let elapsed = now.timeIntervalSince(lastDate)
+        guard elapsed >= minInterval else { return }   // sub-interval noise
+        var newRates: [String: (up: Double, down: Double)] = [:]
+        for app in apps {
+            guard let last = lastTotals[app.processPath] else { continue }
+            let up = app.bytesSent >= last.sent
+                ? Double(app.bytesSent - last.sent) / elapsed : 0
+            let down = app.bytesReceived >= last.received
+                ? Double(app.bytesReceived - last.received) / elapsed : 0
+            newRates[app.processPath] = (up, down)
+        }
+        rates = newRates
         lastTotals = totals
-        lastDate = now
+        self.lastDate = now
+    }
+
+    /// Apps with live traffic, ranked by current rate (most traffic first).
+    /// Drives the popover's recent-activity list: it reorders as rates change.
+    public func activeApps(_ apps: [AppAgg]) -> [AppAgg] {
+        func totalRate(_ app: AppAgg) -> Double {
+            guard let rate = rates[app.processPath] else { return 0 }
+            return rate.up + rate.down
+        }
+        return apps
+            .filter { totalRate($0) > 0 }
+            .sorted { totalRate($0) > totalRate($1) }
     }
 }
 
@@ -188,13 +202,8 @@ public struct TrafficChartSample: Identifiable, Equatable, Sendable {
 }
 
 /// Real traffic series for the traffic charts: the live 5-minute window comes
-/// from in-memory per-tick samples; longer ranges come from history buckets.
+/// from in-memory per-second samples; longer ranges come from history buckets.
 public enum TrafficHistory {
-    /// Samples per 5-second chart bucket for a sampling interval (floor:
-    /// a 2 s cadence fills 2 samples before the bucket completes).
-    public static func samplesPerBucket(interval: TimeInterval) -> Int {
-        max(1, Int(5.0 / interval))
-    }
     /// seconds per bucket + bucket count for a time range.
     public static func bucketLayout(_ range: TimeRange) -> (seconds: Int, count: Int) {
         switch range {

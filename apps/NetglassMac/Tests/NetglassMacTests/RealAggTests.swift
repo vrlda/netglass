@@ -85,15 +85,49 @@ import Testing
         #expect(rate.down == 20)   // 200 bytes / 10 s
     }
 
-    @Test func samplesPerBucketFollowsInterval() {
-        // the live bar grows once per sample: 10 samples per 5s bucket at
-        // 0.5s sampling, fewer at slower cadences
-        #expect(TrafficHistory.samplesPerBucket(interval: 0.25) == 20)
-        #expect(TrafficHistory.samplesPerBucket(interval: 0.5) == 10)
-        #expect(TrafficHistory.samplesPerBucket(interval: 1.0) == 5)
-        #expect(TrafficHistory.samplesPerBucket(interval: 2.0) == 2)
-        #expect(TrafficHistory.samplesPerBucket(interval: 5.0) == 1)
-        #expect(TrafficHistory.samplesPerBucket(interval: 0.1) >= 10)
+    @MainActor
+    @Test func subTickUpdatesKeepBaselineAndDoNotEmit() throws {
+        // The flows publisher fires several times per sampling tick; those
+        // sub-interval observations must NOT refresh the rate baseline, or
+        // rates never emit at the default 0.25 s cadence (elapsed < 0.5 s).
+        let tracker = AppRateTracker()
+        let t0 = Date(timeIntervalSince1970: 1_752_800_000)
+        let f1 = [try flow(process: "A", remoteText: "10.0.0.1", domain: nil, bytesSent: 1_000)]
+        tracker.update(apps: RealAgg.apps(from: f1), now: t0)
+
+        // sub-interval noise, several times per tick
+        tracker.update(apps: RealAgg.apps(from: f1), now: t0.addingTimeInterval(0.05))
+        tracker.update(apps: RealAgg.apps(from: f1), now: t0.addingTimeInterval(0.1))
+        #expect(tracker.rates.isEmpty)
+
+        // a full interval later, the rate is measured from the ORIGINAL baseline
+        let f2 = [try flow(process: "A", remoteText: "10.0.0.1", domain: nil, bytesSent: 1_100)]
+        tracker.update(apps: RealAgg.apps(from: f2), now: t0.addingTimeInterval(0.5))
+        let rate = try #require(tracker.rates["/Applications/A.app/Contents/MacOS/A"])
+        #expect(rate.up == 200)    // 100 bytes / 0.5 s
+    }
+
+    @MainActor
+    @Test func activeAppsSortsByCurrentRateDescending() throws {
+        // Recent-activity ranking: only apps with live traffic, most traffic
+        // first — the list reorders as rates change.
+        let tracker = AppRateTracker()
+        let t0 = Date(timeIntervalSince1970: 1_752_800_000)
+        let apps1 = [
+            try flow(process: "A", remoteText: "10.0.0.1", domain: nil, bytesSent: 1_000),
+            try flow(process: "B", remoteText: "10.0.0.2", domain: nil, bytesSent: 1_000),
+            try flow(process: "C", remoteText: "10.0.0.3", domain: nil, bytesSent: 1_000),
+        ]
+        tracker.update(apps: RealAgg.apps(from: apps1), now: t0)
+        let apps2 = [
+            try flow(process: "A", remoteText: "10.0.0.1", domain: nil, bytesSent: 1_200),  // 400 B/s
+            try flow(process: "B", remoteText: "10.0.0.2", domain: nil, bytesSent: 1_400),  // 800 B/s
+            try flow(process: "C", remoteText: "10.0.0.3", domain: nil, bytesSent: 1_000),  // idle
+        ]
+        tracker.update(apps: RealAgg.apps(from: apps2), now: t0.addingTimeInterval(0.5))
+
+        let active = tracker.activeApps(RealAgg.apps(from: apps2))
+        #expect(active.map(\.name) == ["B", "A"])   // rate-sorted, idle app excluded
     }
 
     @Test func liveSamplesMapHistory() {
