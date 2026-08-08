@@ -14,9 +14,12 @@ public struct ProcessResolver: ProcessIdentityProviding {
 
     public func identity(for pid: Int32) -> ProcessIdentity? {
         guard pid > 0, let path = executablePath(for: pid) else { return nil }
+        // parentPID is intentionally nil on the sampler hot path: the tracker
+        // never reads it, and resolving it costs an extra syscall per pid per
+        // tick. ProcessAncestry resolves parents itself.
         return ProcessIdentity(pid: pid, startTime: nil, executablePath: path,
                                bundleIdentifier: bundleIdentifier(forExecutable: path),
-                               parentPID: parentPID(for: pid))
+                               parentPID: nil)
     }
 
     func parentPID(for pid: Int32) -> Int32? {
