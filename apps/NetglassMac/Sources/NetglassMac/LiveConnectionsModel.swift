@@ -129,7 +129,6 @@ public final class LiveConnectionsModel: ObservableObject {
         guard !Task.isCancelled else { return }
         apply(events)
         updateThroughput(now: Date())
-        let resolutionStart = resolutionEvents.count
         let domains = await enrichDomains(for: events)
         // Persistence is best-effort and off the main actor: a failing ingest
         // (disk full, schema mismatch) must never break the live loop. The
@@ -137,7 +136,7 @@ public final class LiveConnectionsModel: ObservableObject {
         if let database {
             let db = database
             let eventsToPersist = events
-            let domainsToPersist = domains
+            let domainsToPersist = domains.domains
             Task.detached(priority: .utility) {
                 try? db.ingest(eventsToPersist, domains: domainsToPersist)
             }
@@ -171,7 +170,7 @@ public final class LiveConnectionsModel: ObservableObject {
                     break
                 }
             }
-            for resolution in resolutionEvents[resolutionStart...] {
+            for resolution in resolutionEvents.suffix(domains.appended) {
                 opEvents.append(.dns(date: resolution.date, process: resolution.processName,
                                      domain: resolution.domain ?? "?", ip: resolution.ip))
             }
@@ -184,8 +183,9 @@ public final class LiveConnectionsModel: ObservableObject {
     /// Resolves domain evidence for every opened flow's remote IP and stamps
     /// it onto the matching live rows. Cached per IP, so steady-state ticks
     /// do not touch the network.
-    private func enrichDomains(for events: [FlowEvent]) async -> [UUID: DomainCandidate] {
+    private func enrichDomains(for events: [FlowEvent]) async -> (domains: [UUID: DomainCandidate], appended: Int) {
         var result: [UUID: DomainCandidate] = [:]
+        var appended = 0
         let opened = events.compactMap { event -> FlowEvent.FlowOpened? in
             guard case .flowOpened(let opened) = event else { return nil }
             return opened
@@ -199,6 +199,7 @@ public final class LiveConnectionsModel: ObservableObject {
                 confidence: candidate?.confidence,
                 source: candidate?.source.rawValue,
                 processName: processName))
+            appended += 1
             if resolutionEvents.count > 200 {
                 resolutionEvents.removeFirst(resolutionEvents.count - 200)
             }
@@ -209,7 +210,7 @@ public final class LiveConnectionsModel: ObservableObject {
                 flows[index].remoteDomainConfidence = candidate.confidence
             }
         }
-        return result
+        return (domains: result, appended: appended)
     }
 
     private func apply(_ events: [FlowEvent]) {
