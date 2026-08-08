@@ -30,4 +30,10 @@ public final class Sampler: @unchecked Sendable {
         let rows = SocketJoiner().join(connections: connections, sockets: sockets)
         return tracker.ingest(rows, identityForPID: { resolver.identity(for: $0) })
     }
+
+    /// Changes the nettop stream's cadence (Settings → Update frequency).
+    /// No-op for non-streaming clients.
+    public func setNettopInterval(_ interval: Double) {
+        (nettopClient as? StreamingNettopClient)?.setInterval(interval)
+    }
 }

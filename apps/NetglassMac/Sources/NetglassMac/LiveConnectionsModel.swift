@@ -22,7 +22,8 @@ public final class LiveConnectionsModel: ObservableObject {
     /// the 20-minute live window (60 buckets x 5 s = 5 minutes shown).
     private let historyCapacity: Int
     /// Ticks left until the next 1 Hz history sample. First tick records
-    /// immediately, then once per second of ticks (4 at 0.25 s, 2 at 0.5 s).
+    /// immediately, then once per second of ticks (1 at the default 1 s
+    /// interval, 4 at a 0.25 s interval).
     private var ticksUntilHistorySample = 1
     /// Closed flows older than this drop out of the live table (history keeps
     /// them). Bound the in-memory list for long-running sessions.
@@ -33,9 +34,9 @@ public final class LiveConnectionsModel: ObservableObject {
     /// time, so a missed tick doesn't inflate the rate.
     private var lastTotals: (sent: UInt64, received: UInt64)?
     private var lastTickDate: Date?
-    /// When the totals last moved: nettop refreshes counters at ~1 Hz while
-    /// ticks run at 0.25 s, so three of four ticks see frozen counters and
-    /// must keep the last rate instead of reporting zero.
+    /// When the totals last moved: nettop refreshes counters at ~1 Hz even
+    /// when ticks run faster, so several ticks in a row see frozen counters
+    /// and must keep the last rate instead of reporting zero.
     private var lastCounterChangeDate: Date?
     private let idleTimeout: TimeInterval = 2.0
     /// Bytes of flows OPENED this tick: nettop counters are cumulative from
@@ -46,7 +47,15 @@ public final class LiveConnectionsModel: ObservableObject {
     private var removedBaseline: (sent: UInt64, received: UInt64) = (0, 0)
 
     /// Sampling cadence — runtime adjustable (Settings → Update frequency).
-    public var interval: TimeInterval
+    /// Default 1 s: the sampler takes a fresh one-shot nettop snapshot per
+    /// tick, and faster ticks only re-read the same data while burning CPU
+    /// (nettop sub-second `-L` intervals run ~136% and force 4 Hz UI
+    /// redraws).
+    public var interval: TimeInterval {
+        didSet {
+            sampler.setNettopInterval(interval)
+        }
+    }
 
     /// Optional history sink: when set, every tick's events are also persisted
     /// so the live session shows up in the History window. nil in contexts
@@ -74,7 +83,7 @@ public final class LiveConnectionsModel: ObservableObject {
     var sampler: Sampler
     private var tickTask: Task<Void, Never>?
 
-    public init(sampler: Sampler, database: FlowDatabase? = nil, interval: TimeInterval = 0.25,
+    public init(sampler: Sampler, database: FlowDatabase? = nil, interval: TimeInterval = 1.0,
                 historyCapacity: Int = 1200, domainResolver: DomainResolver = DomainResolver(),
                 evictionTTL: TimeInterval = 600) {
         self.sampler = sampler
@@ -83,6 +92,9 @@ public final class LiveConnectionsModel: ObservableObject {
         self.historyCapacity = historyCapacity
         self.domainResolver = domainResolver
         self.evictionTTL = evictionTTL
+        // didSet does not fire during init: sync the nettop stream cadence
+        // so a stored sub-second preference can't leave it at the wrong rate.
+        sampler.setNettopInterval(interval)
     }
 
     /// Chart history is recorded at 1 Hz, so a 5-second bucket always spans

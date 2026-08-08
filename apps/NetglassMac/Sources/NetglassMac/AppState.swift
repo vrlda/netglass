@@ -28,10 +28,18 @@ public final class AppState: ObservableObject {
         if let db {
             try? db.closeOrphanedFlows(endedAt: Date())
         }
-        let interval = UserDefaults.standard.double(forKey: "updateFrequency")
+        // Sampling cadence, clamped to >= 1 s: one-shot nettop at `-L 1`
+        // snapshots fresh data per tick; sub-second ticks only burn CPU
+        // Migrate any stored sub-second value once.
+        let defaults = UserDefaults.standard
+        let stored = defaults.double(forKey: "updateFrequency")
+        let interval = max(1.0, stored > 0 ? stored : 1.0)
+        if stored > 0, stored < 1.0 {
+            defaults.set(1.0, forKey: "updateFrequency")
+        }
         self.liveModel = LiveConnectionsModel(
             sampler: Self.defaultSampler(), database: db,
-            interval: interval > 0 ? interval : 0.25)
+            interval: interval)
     }
 
     public static nonisolated func databaseURL(in directory: URL) -> URL {
@@ -41,8 +49,11 @@ public final class AppState: ObservableObject {
     /// The app's sampling pipeline: real nettop/lsof subprocesses plus a
     /// process resolver walking proc_pidpath.
     public static nonisolated func defaultSampler() -> Sampler {
-        // long-lived nettop stream: one subprocess, no per-tick spawn
-        Sampler(nettopClient: StreamingNettopClient(interval: 0.25),
+        // One-shot nettop per tick: on a pipe, `nettop -L 1` writes a single
+        // snapshot and exits (~170 ms), so each tick gets fresh counters at
+        // ~1/6 of the streaming client's CPU cost (nettop burns ~136% CPU
+        // with sub-second `-L` intervals).
+        Sampler(nettopClient: ProcessNettopClient(),
                 lsofClient: ProcessLsofClient(),
                 resolver: ProcessResolver())
     }

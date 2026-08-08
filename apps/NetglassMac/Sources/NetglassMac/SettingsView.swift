@@ -6,7 +6,7 @@ struct SettingsView: View {
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("startMonitoring") private var startMonitoring = true
     @AppStorage("pauseOnBattery") private var pauseOnBattery = false
-    @AppStorage("updateFrequency") private var updateFrequency = 0.25
+    @AppStorage("updateFrequency") private var updateFrequency = 1.0
     @AppStorage("retentionDays") private var retentionDays = 30
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("compactDensity") private var compactDensity = false
@@ -60,8 +60,6 @@ struct SettingsView: View {
             Toggle("Start monitoring automatically", isOn: $startMonitoring)
             Toggle("Pause monitoring when on battery", isOn: $pauseOnBattery)
             Picker("Update frequency", selection: $updateFrequency) {
-                Text("0.25 s").tag(0.25)
-                Text("0.5 s").tag(0.5)
                 Text("1 s").tag(1.0)
                 Text("2 s").tag(2.0)
                 Text("5 s").tag(5.0)

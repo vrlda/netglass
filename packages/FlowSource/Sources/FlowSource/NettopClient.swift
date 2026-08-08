@@ -54,6 +54,8 @@ public struct ProcessNettopClient: NettopClient {
 /// `sample()` returns the latest COMPLETE batch. Eliminates the per-tick
 /// subprocess spawn (the dominant idle CPU cost) and the per-tick queue
 /// churn. Self-starts on the first sample; no wiring changes needed.
+/// Note: nettop clamps its sample cadence to 1 Hz on modern macOS, and
+/// requesting 0.25 s makes it burn CPU internally — the default is 1 s.
 public final class StreamingNettopClient: NettopClient, @unchecked Sendable {
     public static let header = "time,,interface,state,bytes_in,bytes_out,"
 
@@ -62,9 +64,9 @@ public final class StreamingNettopClient: NettopClient, @unchecked Sendable {
     private var pending = ""
     private var process: Process?
     private var started = false
-    private let interval: Double
+    private var interval: Double
 
-    public init(interval: Double = 0.25) {
+    public init(interval: Double = 1.0) {
         self.interval = interval
     }
 
@@ -77,6 +79,18 @@ public final class StreamingNettopClient: NettopClient, @unchecked Sendable {
 
     public func stop() {
         lock.lock()
+        started = false
+        let process = self.process
+        self.process = nil
+        lock.unlock()
+        process?.terminate()
+    }
+
+    /// Changes the sampling cadence. The running nettop is terminated and
+    /// restarted lazily with the new `-L` on the next sample.
+    public func setInterval(_ newInterval: Double) {
+        lock.lock()
+        interval = newInterval
         started = false
         let process = self.process
         self.process = nil
