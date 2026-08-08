@@ -37,4 +37,35 @@ import Testing
         #expect(scope.excludedIPs == ["10.20.10.50"])
         #expect(scope.excludedDomains == ["admin.lab.example"])
     }
+
+    @Test func scopeParsesYaml() {
+        let yaml = """
+        # lab scope
+        allowed:
+          - 10.20.0.0/16
+          - "*.lab.example"
+        excluded:
+          - 10.20.10.50
+          - admin.lab.example
+        ignored: true
+        """
+        let scope = OperationScope.parse(yaml: yaml)
+        #expect(scope.allowedCIDRs.count == 1)
+        #expect(scope.allowedDomains == ["lab.example"])
+        #expect(scope.excludedIPs == ["10.20.10.50"])
+        #expect(scope.excludedDomains == ["admin.lab.example"])
+    }
+
+    @Test func scopeRendersNormalizedLines() {
+        let scope = OperationScope(
+            allowedCIDRs: [IPRange(text: "10.20.0.0/16")!],
+            allowedDomains: ["lab.example"],
+            excludedIPs: ["10.20.10.50"],
+            excludedDomains: ["admin.lab.example"])
+        let lines = scope.normalizedLines()
+        #expect(lines.contains("10.20.0.0/16"))
+        #expect(lines.contains("*.lab.example"))
+        #expect(lines.contains("excluded: 10.20.10.50"))
+        #expect(lines.contains("excluded: admin.lab.example"))
+    }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Operations: start/stop an OPSEC session, watch the live timeline and
 /// leak warnings, review the cleanup report, export evidence.
@@ -67,8 +68,13 @@ struct StartOperationSheet: View {
                 }
             }
             .pickerStyle(.menu)
-            Text("Scope — CIDRs (10.20.0.0/16), domains (*.lab.example), exclusions (excluded: 10.20.10.50), one per line")
-                .font(.system(size: 10)).foregroundStyle(.secondary)
+            HStack {
+                Text("Scope — CIDRs (10.20.0.0/16), domains (*.lab.example), exclusions (excluded: 10.20.10.50), one per line")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                Spacer()
+                Button("Import scope file…") { importScope() }
+                    .controlSize(.mini)
+            }
             TextEditor(text: $scopeText)
                 .font(.system(size: 11, design: .monospaced))
                 .frame(height: 120)
@@ -87,6 +93,16 @@ struct StartOperationSheet: View {
         }
         .padding(20)
         .frame(width: 460)
+    }
+
+    private func importScope() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.yaml, .text, .json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url,
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        let scope = OperationScope.parse(yaml: text)
+        scopeText = scope.normalizedLines().joined(separator: "\n")
     }
 }
 

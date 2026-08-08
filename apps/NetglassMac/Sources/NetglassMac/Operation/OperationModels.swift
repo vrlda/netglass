@@ -47,6 +47,43 @@ public struct OperationScope: Codable, Equatable, Sendable {
                               excludedIPs: excludedIPs, excludedDomains: excludedDomains)
     }
 
+    /// Minimal YAML-subset parser for the scope file shape:
+    /// `allowed:` / `excluded:` blocks with `- value` list items; `#` comments;
+    /// quoted values stripped. Everything else is ignored. Delegates to the
+    /// plain-line classifier, so classification stays consistent.
+    public static func parse(yaml: String) -> OperationScope {
+        var lines: [String] = []
+        var excluded = false
+        for rawLine in yaml.split(separator: "\n", omittingEmptySubsequences: true) {
+            var line = String(rawLine)
+            if let hash = line.firstIndex(of: "#") { line = String(line[..<hash]) }
+            line = line.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { continue }
+            if line.hasSuffix(":") {
+                let key = String(line.dropLast()).trimmingCharacters(in: .whitespaces).lowercased()
+                excluded = key == "excluded"
+                continue
+            }
+            guard line.hasPrefix("-") else { continue }
+            let value = String(line.dropFirst()).trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            guard !value.isEmpty else { continue }
+            lines.append(excluded ? "excluded: \(value)" : value)
+        }
+        return parse(lines: lines)
+    }
+
+    /// Normalized plain lines (round-trips through `parse(lines:)`), used to
+    /// fill the scope editor after a YAML import.
+    public func normalizedLines() -> [String] {
+        var lines: [String] = []
+        lines.append(contentsOf: allowedCIDRs.map(\.text))
+        lines.append(contentsOf: allowedDomains.map { "*.\($0)" })
+        lines.append(contentsOf: excludedIPs.map { "excluded: \($0)" })
+        lines.append(contentsOf: excludedDomains.map { "excluded: \($0)" })
+        return lines
+    }
+
     public func verdict(ip: [UInt8], domain: String?) -> ScopeVerdict {
         if isLoopback(ip) { return .unknown }
         if excludedIPs.contains(where: { parseAndMatch($0, ip) })

@@ -5,6 +5,7 @@ import Foundation
 public struct IPRange: Equatable, Sendable, Codable {
     public let base: [UInt8]
     public let prefix: Int
+    public let text: String
 
     public init?(text: String) {
         let parts = text.split(separator: "/", omittingEmptySubsequences: false)
@@ -32,6 +33,7 @@ public struct IPRange: Equatable, Sendable, Codable {
         guard resolved <= maxPrefix else { return nil }
         self.base = bytes
         self.prefix = resolved
+        self.text = text
     }
 
     public func contains(_ ip: [UInt8]) -> Bool {
