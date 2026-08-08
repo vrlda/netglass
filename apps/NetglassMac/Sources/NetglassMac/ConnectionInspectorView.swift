@@ -8,6 +8,7 @@ struct ConnectionInspectorView: View {
     let flow: LiveFlow
     @EnvironmentObject private var liveModel: LiveConnectionsModel
     @State private var ancestryNames: [String] = []
+    @State private var trust: ProcessTrust?
 
     var body: some View {
         ScrollView {
@@ -21,6 +22,25 @@ struct ConnectionInspectorView: View {
                     InspectorField(name: "PID", value: "\(flow.pid)")
                     InspectorField(name: "Ancestry", value: ancestryNames.joined(separator: " → "), mono: true)
                     InspectorField(name: "User", value: NSUserName(), mono: false)
+                }
+                InspectorSection(title: "Trust", systemImage: "checkmark.shield") {
+                    if let trust {
+                        InspectorField(name: "Signed", value: trust.signed ? "Yes" : "No", mono: false)
+                        if let authority = trust.authority {
+                            InspectorField(name: "Authority", value: authority, mono: false)
+                        }
+                        if let teamID = trust.teamID {
+                            InspectorField(name: "Team ID", value: teamID, mono: false)
+                        }
+                        InspectorField(name: "SHA-256", value: String(trust.sha256.prefix(16)) + "…", mono: true)
+                        InspectorField(name: "Flags", value: trustFlags(trust), mono: false)
+                        if !trust.networkEntitlements.isEmpty {
+                            InspectorField(name: "Net entitlements",
+                                           value: trust.networkEntitlements.joined(separator: ", "), mono: false)
+                        }
+                    } else {
+                        InspectorField(name: "Trust", value: "Checking…", mono: false)
+                    }
                 }
                 InspectorSection(title: "Connection", systemImage: "point.3.connected.trianglepath.dotted") {
                     InspectorField(name: "Local", value: "\(flow.local.address.text):\(flow.local.port)")
@@ -69,6 +89,7 @@ struct ConnectionInspectorView: View {
             .task(id: flow.flowID) {
                 ancestryNames = ProcessAncestry.chain(for: flow.pid)
                     .map { $0.executablePath.split(separator: "/").last.map(String.init) ?? "?" }
+                trust = ProcessTrustInspector.inspect(path: flow.executablePath)
             }
             .padding(NetglassSpacing.section)
         }
@@ -110,6 +131,15 @@ struct ConnectionInspectorView: View {
     }
 
     private var geo: GeoInfo? { GeoIP.lookup(flow.remote.address.text) }
+
+    private func trustFlags(_ trust: ProcessTrust) -> String {
+        var flags: [String] = []
+        if trust.isTemporary { flags.append("Temp path") }
+        if trust.isDiskImage { flags.append("Disk image") }
+        if trust.isSystemBinary { flags.append("System") }
+        if trust.changedSinceFirstSeen { flags.append("Changed since first seen") }
+        return flags.isEmpty ? "—" : flags.joined(separator: ", ")
+    }
 
     private var detailsText: String {
         "\(flow.processName) (PID \(flow.pid)) \(flow.remote.address.text):\(flow.remote.port) "
