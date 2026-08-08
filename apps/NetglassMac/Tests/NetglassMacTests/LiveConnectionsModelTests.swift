@@ -27,6 +27,18 @@ import Testing
     }
 
     @MainActor
+    @Test func runOnceReportsActivity() async throws {
+        // The tick loop slows down when idle: runOnce returns true when the
+        // tick produced flow events (counters moved / flows opened-closed)
+        // and false when the snapshot was unchanged.
+        let model = noDomainModel(sampler: try fixtureSampler())
+        let first = await model.runOnce()
+        #expect(first)                     // Telegram opened on the first tick
+        let second = await model.runOnce()
+        #expect(!second)                   // static fixture: nothing changed
+    }
+
+    @MainActor
     @Test func appliesOpenedEvents() async throws {
         let model = noDomainModel(sampler: try fixtureSampler())
         await model.runOnce()

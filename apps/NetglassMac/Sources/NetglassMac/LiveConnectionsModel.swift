@@ -110,8 +110,12 @@ public final class LiveConnectionsModel: ObservableObject {
         tickTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                await self.runOnce()
-                try? await Task.sleep(for: .seconds(self.interval))
+                let changed = await self.runOnce()
+                // Light mode: when nothing changed (no counters moved, no
+                // flows opened/closed), tick half as often — most of the
+                // per-tick cost is the nettop/lsof subprocess lifecycle.
+                let cadence = changed ? self.interval : min(self.interval * 2, 5.0)
+                try? await Task.sleep(for: .seconds(cadence))
             }
         }
     }
@@ -125,9 +129,12 @@ public final class LiveConnectionsModel: ObservableObject {
         tickTask = nil
     }
 
-    /// One sampling tick. Public for tests.
-    public func runOnce() async {
-        guard !Task.isCancelled else { return }
+    /// One sampling tick. Public for tests. Returns true when the tick
+    /// produced activity (flow events — counters moved or flows opened/
+    /// closed); false means idle, so the loop can slow down.
+    @discardableResult
+    public func runOnce() async -> Bool {
+        guard !Task.isCancelled else { return false }
         let sampler = self.sampler   // read on main actor; Sampler is @unchecked Sendable
         let events: [FlowEvent]
         do {
@@ -136,9 +143,9 @@ public final class LiveConnectionsModel: ObservableObject {
             // runs to completion. Accepted M3 residual.
             events = try await Task.detached(priority: .utility) { try sampler.sample() }.value
         } catch {
-            return   // sampling failure: keep last-known state; retry next tick
+            return false   // sampling failure: keep last-known state; retry next tick
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return false }
         apply(events)
         updateThroughput(now: Date())
         let domains = await enrichDomains(for: events)
@@ -190,6 +197,7 @@ public final class LiveConnectionsModel: ObservableObject {
                 operationSink(opEvents)
             }
         }
+        return !events.isEmpty
     }
 
     /// Resolves domain evidence for every opened flow's remote IP and stamps
