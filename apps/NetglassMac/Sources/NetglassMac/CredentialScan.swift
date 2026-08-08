@@ -13,7 +13,12 @@ public struct CredentialHit: Identifiable, Equatable, Sendable {
 }
 
 public enum CredentialScan {
-    private static let sensitiveTokens = ["password", "login", "auth", "token", "secret", "credential"]
+    /// Tokens for login-style plaintext payloads (FTP/Telnet/POP3/IMAP lines
+    /// like USER/PASS). `user`/`pass` are too noisy for DNS names, so DNS
+    /// uses the narrower list below.
+    private static let payloadTokens = ["password", "login", "auth", "token", "secret", "credential",
+                                        "user", "pass"]
+    private static let dnsTokens = ["password", "login", "auth", "token", "secret", "credential"]
     private static let plaintextPorts: Set<UInt16> = [21, 23, 25, 80, 110, 143]
 
     public static func scan(_ packets: [PacketRecord]) -> [CredentialHit] {
@@ -33,12 +38,12 @@ public enum CredentialScan {
                plaintextPorts.contains(port),
                packet.protocolName != "UDP",
                !isTLS(packet.rawBytes),
-               sensitiveTokens.contains(where: { lower.contains($0) }) {
+               payloadTokens.contains(where: { lower.contains($0) }) {
                 hits.append(hit(packet, kind: "plaintext-login",
                                 detail: "Plaintext protocol on port \(port)"))
             }
             if let name = dnsQueryName(from: packet.info),
-               sensitiveTokens.contains(where: { name.lowercased().contains($0) }) {
+               dnsTokens.contains(where: { name.lowercased().contains($0) }) {
                 hits.append(hit(packet, kind: "dns-sensitive",
                                 detail: "DNS query \(name)"))
             }
