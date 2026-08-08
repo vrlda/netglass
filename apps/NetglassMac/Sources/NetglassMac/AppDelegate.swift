@@ -93,7 +93,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refreshMeter(_ throughput: Throughput) {
         guard let button = statusItem?.button else { return }
-        let height = NSStatusBar.system.thickness - 4
+        // 2pt shorter than the bar: the meter (7pt bars + 8pt numbers) fits
+        // comfortably without clipping the top row.
+        let height = NSStatusBar.system.thickness - 2
         button.image = StatusMeter.image(
             down: throughput.bytesPerSecondDown,
             up: throughput.bytesPerSecondUp,

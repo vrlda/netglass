@@ -82,6 +82,41 @@ import Testing
         #expect(StatusMeter.textWidth("ABCD") == StatusMeter.textWidth("AB") * 2)
     }
 
+    @Test func numbersCenteredOnBarsInsideImage() {
+        // Menu-bar heights (thickness 22 - 2 = 20, and the 18pt minimum):
+        // each number must be vertically centered on its bar and its ink
+        // must stay inside the image (never clipped by the top edge).
+        for height in [18.0, 20.0] {
+            let rep = pixels(of: StatusMeter.image(down: 5_000_000, up: 5_000_000, height: height))
+            guard let label = NSColor.labelColor.usingColorSpace(rep.colorSpace) else { continue }
+            let H = rep.pixelsHigh
+            let stack = StatusMeter.barHeight * 2 + StatusMeter.barGap
+            let padding = max(1, (height - stack) / 2)
+            let midY1 = padding + StatusMeter.barHeight / 2
+            let midY2 = midY1 + StatusMeter.barHeight + StatusMeter.barGap
+            for (row, target, yRange) in [
+                ("top", Double(H) - midY2, 0..<H / 2),
+                ("bottom", Double(H) - midY1, H / 2..<H),
+            ] {
+                var minY = Int.max, maxY = -1
+                for y in yRange {
+                    for x in 40..<rep.pixelsWide {
+                        guard let c = rep.colorAt(x: x, y: y), c.alphaComponent > 0.5 else { continue }
+                        if abs(c.redComponent - label.redComponent) < 0.15,
+                           abs(c.greenComponent - label.greenComponent) < 0.15,
+                           abs(c.blueComponent - label.blueComponent) < 0.15 {
+                            minY = min(minY, y)
+                            maxY = max(maxY, y)
+                        }
+                    }
+                }
+                #expect(minY >= 1, "\(row) number is clipped by the image edge at h=\(height)")
+                let center = Double(minY + maxY) / 2
+                #expect(abs(center - target) <= 1.5, "\(row) number not centered on its bar at h=\(height)")
+            }
+        }
+    }
+
     @Test func textRightAlignedInFixedSlots() {
         // Values with different string lengths must land at the same right
         // edge so the item width never jitters.

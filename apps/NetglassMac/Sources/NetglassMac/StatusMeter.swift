@@ -7,7 +7,9 @@ import AppKit
 enum StatusMeter {
     static let marginX: CGFloat = 4
     static let barWidth: CGFloat = 26
-    static let barHeight: CGFloat = 8
+    /// 7pt bars keep the 15pt stack comfortably inside an 18pt status-item
+    /// image (thickness 22 - 4), so the top row is never clipped.
+    static let barHeight: CGFloat = 7
     static let barGap: CGFloat = 1
     static let arrowSlotWidth: CGFloat = 9
     static let textSlotWidth: CGFloat = 26
@@ -15,9 +17,9 @@ enum StatusMeter {
     static let segmentStep: CGFloat = 4.5
 
     static var font: NSFont {
-        NSFont.systemFont(ofSize: 9, weight: .medium)
+        NSFont.systemFont(ofSize: 8, weight: .medium)
     }
-    private static let glyphWidth: CGFloat = 5.4
+    private static let glyphWidth: CGFloat = 4.8
 
     /// Fixed-width labels avoid asking CoreText to measure a custom image while
     /// AppKit is taking a status-item snapshot.
@@ -74,7 +76,11 @@ enum StatusMeter {
         // Speed number, right-aligned in a fixed slot so the item never jitters.
         let number = NSAttributedString(string: text, attributes: [
             .font: font, .foregroundColor: NSColor.labelColor])
-        let baseline = midY - (font.ascender + font.descender) / 2
+        // Baseline from font metrics minus a 2pt nudge: digit ink is
+        // baseline-heavy, so centering by metrics alone sits the number
+        // ~2pt above its bar. 8pt text keeps the ink inside an 18-20pt
+        // image with the 7pt bar stack.
+        let baseline = midY - (font.ascender + font.descender) / 2 - 2
         number.draw(at: NSPoint(x: x + barWidth + arrowSlotWidth + textSlotWidth - textWidth(text),
                                 y: baseline))
     }
