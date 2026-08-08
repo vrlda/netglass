@@ -45,10 +45,7 @@ struct OperationsView: View {
     }
 
     private var endedState: some View {
-        Text("Operation ended — reviewing")
-            .font(.system(size: 13))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        OperationReportView()
     }
 }
 
@@ -81,8 +78,7 @@ struct StartOperationSheet: View {
                 Button("Cancel") { dismiss() }
                 Button("Start") {
                     let scope = OperationScope.parse(lines: scopeText.split(separator: "\n").map(String.init))
-                    operation.start(name: name.isEmpty ? "Operation \(Date().formatted(date: .abbreviated, time: .shortened))" : name,
-                                    expectedTunnel: tunnel, scope: scope)
+                    operation.start(name: name, expectedTunnel: tunnel, scope: scope)
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
@@ -239,6 +235,59 @@ struct OperationRunningView: View {
                 Text(":\(listener.port)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                 Text(listener.exposure).font(.system(size: 10)).foregroundStyle(.tertiary)
             }
+        }
+    }
+}
+
+struct OperationReportView: View {
+    @EnvironmentObject private var operation: OperationViewModel
+    @State private var exportError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Operation ended")
+                .font(.system(size: 14, weight: .semibold))
+            if let report = operation.session?.cleanupReport {
+                VStack(alignment: .leading, spacing: 4) {
+                    reportRow("Active processes", "\(report.activeProcessPaths.count)")
+                    reportRow("Listeners opened during op", report.newListenersAtEnd.joined(separator: ", "))
+                    reportRow("Established connections", "\(report.activeConnectionCount)")
+                    reportRow("Resolver changed", report.resolverChanged ? "yes" : "no")
+                    reportRow("Default route changed", report.defaultRouteChanged ? "yes" : "no")
+                }
+                .font(.system(size: 12, design: .monospaced))
+            }
+            if let exportError {
+                Text(exportError).font(.system(size: 11)).foregroundStyle(.red)
+            }
+            HStack {
+                Button("Export Evidence") { export() }
+                    .buttonStyle(.borderedProminent)
+                Button("Discard") { operation.discard() }
+            }
+            Spacer()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func reportRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label).foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+        }
+    }
+
+    private func export() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "operation-\(operation.session?.name ?? "export").json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try operation.export(to: url)
+        } catch {
+            exportError = error.localizedDescription
         }
     }
 }

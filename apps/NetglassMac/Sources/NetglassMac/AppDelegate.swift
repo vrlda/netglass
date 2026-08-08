@@ -43,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
         appState.liveModel.start()              // sampling runs for app lifetime
+        appState.liveModel.operationSink = { [weak self] events in
+            MainActor.assumeIsolated { self?.operation.ingest(events) }
+        }
         throughputObservation = appState.liveModel.$throughput
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.refreshMeter($0) }
