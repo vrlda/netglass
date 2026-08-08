@@ -1,5 +1,6 @@
 import Foundation
 import FlowModel
+import FlowSource
 
 public enum ScopeVerdict: String, Codable, Sendable {
     case inScope, excluded, outOfScope, unknown
@@ -75,5 +76,191 @@ public struct OperationScope: Codable, Equatable, Sendable {
     private func parseAndMatch(_ text: String, _ ip: [UInt8]) -> Bool {
         guard let range = IPRange(text: text) else { return false }
         return range.contains(ip)
+    }
+}
+
+// MARK: - Operation events
+
+public enum ListenerAction: String, Codable, Sendable {
+    case opened, closed
+}
+
+public struct ListeningPort: Identifiable, Codable, Equatable, Sendable {
+    public let id: String
+    public let process: String
+    public let pid: Int32
+    public let address: String
+    public let port: UInt16
+    public let proto: String
+    public let exposure: String    // "loopback" | "allInterfaces" | "specific"
+    public let action: ListenerAction
+
+    public init(process: String, pid: Int32, address: String, port: UInt16,
+                proto: String, exposure: String, action: ListenerAction) {
+        self.id = "\(pid)-\(proto)-\(address):\(port)"
+        self.process = process
+        self.pid = pid
+        self.address = address
+        self.port = port
+        self.proto = proto
+        self.exposure = exposure
+        self.action = action
+    }
+}
+
+public enum OperationEvent: Codable, Equatable, Sendable {
+    case connection(opened: Bool, date: Date, process: String,
+                    executablePath: String, remote: NetworkEndpoint,
+                    interface: String, transport: TransportProtocol, bytes: UInt64)
+    case dns(date: Date, process: String, domain: String, ip: String)
+    case listener(ListeningPort)
+}
+
+// MARK: - Leak warnings
+
+public enum LeakRuleID: String, Codable, Sendable {
+    case interfaceMismatch, ipv6Escape, preTunnelDNS, resolverMismatch,
+         scopeViolation, listenerExposure, trafficAfterStop
+}
+
+public enum Severity: String, Codable, Sendable {
+    case info, warning, critical
+}
+
+public struct LeakWarning: Identifiable, Codable, Equatable, Sendable {
+    public let id: UUID
+    public let date: Date
+    public let rule: LeakRuleID
+    public let severity: Severity
+    public let title: String
+    public let details: [String]
+
+    public init(rule: LeakRuleID, severity: Severity, title: String, details: [String]) {
+        self.id = UUID()
+        self.date = Date()
+        self.rule = rule
+        self.severity = severity
+        self.title = title
+        self.details = details
+    }
+}
+
+// MARK: - Snapshots
+
+public struct ResolverConfig: Codable, Equatable, Sendable {
+    public let nameservers: [String]
+    public init(nameservers: [String]) { self.nameservers = nameservers }
+}
+
+public struct OperationSnapshot: Codable, Equatable, Sendable {
+    public let date: Date
+    public let defaultRouteInterface: String
+    public let interfaces: [NetInterface]
+    public let resolvers: [ResolverConfig]
+    public let listeners: [LsofListener]
+
+    public init(date: Date, defaultRouteInterface: String = "",
+                interfaces: [NetInterface] = [],
+                resolvers: [ResolverConfig] = [],
+                listeners: [LsofListener] = []) {
+        self.date = date
+        self.defaultRouteInterface = defaultRouteInterface
+        self.interfaces = interfaces
+        self.resolvers = resolvers
+        self.listeners = listeners
+    }
+}
+
+// MARK: - Session
+
+public struct OperationSession: Codable, Equatable, Sendable {
+    public let id: UUID
+    public let name: String
+    public let startedAt: Date
+    public var endedAt: Date?
+    public let expectedTunnel: String
+    public let scope: OperationScope
+    public let snapshotIn: OperationSnapshot
+    public var snapshotOut: OperationSnapshot?
+    public var cleanupReport: CleanupReport?
+    public var events: [OperationEvent]
+    public var warnings: [LeakWarning]
+
+    public init(id: UUID = UUID(), name: String, startedAt: Date = Date(),
+                expectedTunnel: String, scope: OperationScope,
+                snapshotIn: OperationSnapshot) {
+        self.id = id
+        self.name = name
+        self.startedAt = startedAt
+        self.endedAt = nil
+        self.expectedTunnel = expectedTunnel
+        self.scope = scope
+        self.snapshotIn = snapshotIn
+        self.snapshotOut = nil
+        self.cleanupReport = nil
+        self.events = []
+        self.warnings = []
+    }
+
+    public static func make(name: String, expectedTunnel: String,
+                            scope: OperationScope, snapshotIn: OperationSnapshot) -> OperationSession {
+        OperationSession(name: name, expectedTunnel: expectedTunnel,
+                         scope: scope, snapshotIn: snapshotIn)
+    }
+}
+
+// MARK: - Cleanup report
+
+public struct CleanupReport: Codable, Equatable, Sendable {
+    public let activeProcessPaths: [String]
+    public let listenersStillOpen: [String]
+    public let activeConnectionCount: Int
+    public let resolverChanged: Bool
+    public let defaultRouteChanged: Bool
+
+    public init(snapshotIn: OperationSnapshot, snapshotOut: OperationSnapshot,
+                liveFlows: [LiveFlow], endedAt: Date) {
+        self.activeProcessPaths = Array(Set(liveFlows.map(\.executablePath))).sorted()
+        self.listenersStillOpen = snapshotOut.listeners
+            .filter { listener in
+                guard listener.pid != 0 else { return false }
+                return !snapshotIn.listeners.contains {
+                    $0.pid == listener.pid
+                        && $0.address == listener.address
+                        && $0.port == listener.port
+                }
+            }
+            .map { "\($0.processName):\($0.address):\($0.port)" }
+            .sorted()
+        self.activeConnectionCount = liveFlows.filter(\.isActive).count
+        self.resolverChanged = snapshotIn.resolvers != snapshotOut.resolvers
+        self.defaultRouteChanged = snapshotIn.defaultRouteInterface != snapshotOut.defaultRouteInterface
+            && !snapshotOut.defaultRouteInterface.isEmpty
+    }
+}
+
+// MARK: - Export bundle
+
+public struct OperationBundle: Codable, Equatable, Sendable {
+    public let app: String
+    public let version: String
+    public let operation: OperationSession
+    public let snapshotIn: OperationSnapshot
+    public let snapshotOut: OperationSnapshot?
+    public let warnings: [LeakWarning]
+    public let events: [OperationEvent]
+    public let cleanupReport: CleanupReport?
+
+    public init(operation: OperationSession, warnings: [LeakWarning],
+                events: [OperationEvent], snapshotIn: OperationSnapshot,
+                snapshotOut: OperationSnapshot?, cleanupReport: CleanupReport?) {
+        self.app = "Netglass"
+        self.version = "1.0.0"
+        self.operation = operation
+        self.warnings = warnings
+        self.events = events
+        self.snapshotIn = snapshotIn
+        self.snapshotOut = snapshotOut
+        self.cleanupReport = cleanupReport
     }
 }

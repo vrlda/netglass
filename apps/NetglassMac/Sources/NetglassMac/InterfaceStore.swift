@@ -1,7 +1,7 @@
 import Foundation
 
 /// One network interface with its addresses, from getifaddrs (no permissions).
-public struct NetInterface: Identifiable, Equatable, Sendable {
+public struct NetInterface: Identifiable, Codable, Equatable, Sendable {
     public let name: String
     public let ipv4: String?
     public let ipv6: String?
