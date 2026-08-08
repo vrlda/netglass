@@ -9,6 +9,25 @@ public struct LsofSocket: Equatable, Sendable {
     public let remote: NetworkEndpoint
 }
 
+/// A listening socket from `lsof -i -n -P` output (rows without `->`).
+public struct LsofListener: Equatable, Sendable, Codable {
+    public let pid: Int32
+    public let processName: String
+    public let transport: TransportProtocol
+    public let address: String
+    public let port: UInt16
+
+    public enum Exposure: Equatable, Sendable {
+        case loopback, allInterfaces, specific
+    }
+
+    public var exposure: Exposure {
+        if address == "0.0.0.0" || address == "::" || address == "*" { return .allInterfaces }
+        if address == "127.0.0.1" || address == "::1" { return .loopback }
+        return .specific
+    }
+}
+
 public struct LsofParser: Sendable {
     public init() {}
 
@@ -47,6 +66,31 @@ public struct LsofParser: Sendable {
         if name.hasPrefix("TCP") { return .tcp }
         if name.hasPrefix("UDP") { return .udp }
         return nil
+    }
+
+    /// Parses listener rows: `TCP 0.0.0.0:8000 (LISTEN)`, `TCP [::1]:2222 (LISTEN)`.
+    public func parseListeners(_ text: String) -> [LsofListener] {
+        var listeners: [LsofListener] = []
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            let line = String(rawLine).trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("COMMAND") else { continue }
+            let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard fields.count >= 9 else { continue }
+            guard let pid = Int32(fields[1]) else { continue }
+            let processName = String(fields[0])
+            guard let protoIndex = fields[7...].firstIndex(where: { $0 == "TCP" || $0 == "UDP" }) else { continue }
+            let name = fields[protoIndex...].joined(separator: " ")
+            guard name.contains("(LISTEN)") else { continue }
+            let transport: TransportProtocol = name.hasPrefix("TCP") ? .tcp : .udp
+            let rest = String(name.drop(while: { $0 != " " }).dropFirst())
+            let endpointToken = rest.split(separator: " ", maxSplits: 1).first.map(String.init) ?? rest
+            guard let parsed = Self.parseEndpoint(endpointToken) else { continue }
+            listeners.append(LsofListener(pid: pid, processName: processName,
+                                          transport: transport,
+                                          address: parsed.address.text,
+                                          port: parsed.port))
+        }
+        return listeners
     }
 
     private static func parseEndpoint(_ token: String) -> NetworkEndpoint? {
