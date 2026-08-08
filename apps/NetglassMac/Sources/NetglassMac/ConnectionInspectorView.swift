@@ -1,11 +1,13 @@
 import SwiftUI
 import FlowModel
+import FlowSource
 
 /// Right-column inspector for a selected connection. Native inspector style:
 /// compact header, collapsible groups separated by quiet dividers.
 struct ConnectionInspectorView: View {
     let flow: LiveFlow
     @EnvironmentObject private var liveModel: LiveConnectionsModel
+    @State private var ancestryNames: [String] = []
 
     var body: some View {
         ScrollView {
@@ -17,6 +19,7 @@ struct ConnectionInspectorView: View {
                     InspectorField(name: "Executable", value: flow.executablePath)
                     InspectorField(name: "Bundle", value: flow.bundleIdentifier ?? "—", mono: false)
                     InspectorField(name: "PID", value: "\(flow.pid)")
+                    InspectorField(name: "Ancestry", value: ancestryNames.joined(separator: " → "), mono: true)
                     InspectorField(name: "User", value: NSUserName(), mono: false)
                 }
                 InspectorSection(title: "Connection", systemImage: "point.3.connected.trianglepath.dotted") {
@@ -62,6 +65,10 @@ struct ConnectionInspectorView: View {
                 }
                 .controlSize(.small)
                 .padding(.top, NetglassSpacing.section)
+            }
+            .task(id: flow.flowID) {
+                ancestryNames = ProcessAncestry.chain(for: flow.pid)
+                    .map { $0.executablePath.split(separator: "/").last.map(String.init) ?? "?" }
             }
             .padding(NetglassSpacing.section)
         }

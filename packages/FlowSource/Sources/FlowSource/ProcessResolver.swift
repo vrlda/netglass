@@ -16,7 +16,15 @@ public struct ProcessResolver: ProcessIdentityProviding {
         guard pid > 0, let path = executablePath(for: pid) else { return nil }
         return ProcessIdentity(pid: pid, startTime: nil, executablePath: path,
                                bundleIdentifier: bundleIdentifier(forExecutable: path),
-                               parentPID: nil)
+                               parentPID: parentPID(for: pid))
+    }
+
+    func parentPID(for pid: Int32) -> Int32? {
+        var info = proc_bsdinfo()
+        let size = MemoryLayout<proc_bsdinfo>.size
+        let result = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(size))
+        guard result == size, info.pbi_ppid > 0 else { return nil }
+        return Int32(info.pbi_ppid)
     }
 
     func executablePath(for pid: Int32) -> String? {

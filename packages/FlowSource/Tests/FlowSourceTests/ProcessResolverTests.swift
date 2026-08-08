@@ -51,4 +51,23 @@ import Testing
         let path = dir.appendingPathComponent("binary").path
         #expect(resolver.bundleIdentifier(forExecutable: path) == nil)
     }
+
+    @Test func resolvesParentPID() {
+        let pid = Int32(getpid())
+        let parent = ProcessResolver().parentPID(for: pid)
+        #expect(parent != nil)
+        #expect(parent! > 0)
+        #expect(parent! != pid)
+    }
+
+    @Test func ancestryReachesRootOrCap() {
+        let chain = ProcessAncestry.chain(for: Int32(getpid()))
+        #expect(!chain.isEmpty)
+        #expect(chain.count <= ProcessAncestry.maxDepth)
+        #expect(chain.first?.pid == 1 || chain.count == ProcessAncestry.maxDepth)
+        // each link is the parent of the next
+        for i in 0..<(chain.count - 1) {
+            #expect(chain[i].pid == chain[i + 1].parentPID)
+        }
+    }
 }
