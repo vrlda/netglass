@@ -62,10 +62,17 @@ import Testing
             transport: .tcp,
             local: NetworkEndpoint(address: try #require(IPAddress(text: "192.168.1.42")), port: 51234),
             remote: NetworkEndpoint(address: try #require(IPAddress(text: "149.154.167.51")), port: 443),
+            interface: "en0",
             startedAt: Date(timeIntervalSince1970: 1_752_800_000.125),
             bytesSent: 3400,
             bytesReceived: 1200
         )
+    }
+
+    @Test func openedCarriesInterface() throws {
+        let event: FlowEvent = .flowOpened(try opened())
+        guard case .flowOpened(let payload) = event else { Issue.record("not opened"); return }
+        #expect(payload.interface == "en0")
     }
 
     @Test func flowOpenedCodableRoundTrip() throws {

@@ -15,7 +15,7 @@ import Testing
         let remote = NetworkEndpoint(address: try #require(IPAddress(text: remoteText)), port: 443)
         let openedEvent = FlowEvent.FlowOpened(
             flowID: UUID(), process: process, pid: 9217, transport: .tcp,
-            local: local, remote: remote,
+            local: local, remote: remote, interface: "en0",
             startedAt: Date(timeIntervalSince1970: startedAt),
             bytesSent: bytesSent, bytesReceived: bytesReceived)
         return .flowOpened(openedEvent)

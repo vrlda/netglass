@@ -8,13 +8,14 @@ public enum FlowEvent: Codable, Sendable, Equatable {
         public let transport: TransportProtocol
         public let local: NetworkEndpoint
         public let remote: NetworkEndpoint
+        public let interface: String
         public let startedAt: Date
         public let bytesSent: UInt64
         public let bytesReceived: UInt64
 
         public init(flowID: UUID, process: ProcessIdentity?, pid: Int32,
                     transport: TransportProtocol, local: NetworkEndpoint,
-                    remote: NetworkEndpoint, startedAt: Date,
+                    remote: NetworkEndpoint, interface: String, startedAt: Date,
                     bytesSent: UInt64, bytesReceived: UInt64) {
             self.flowID = flowID
             self.process = process
@@ -22,6 +23,7 @@ public enum FlowEvent: Codable, Sendable, Equatable {
             self.transport = transport
             self.local = local
             self.remote = remote
+            self.interface = interface
             self.startedAt = startedAt
             self.bytesSent = bytesSent
             self.bytesReceived = bytesReceived

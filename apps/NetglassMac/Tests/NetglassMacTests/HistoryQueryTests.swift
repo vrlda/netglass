@@ -23,7 +23,7 @@ import Testing
         let remote = NetworkEndpoint(address: try #require(IPAddress(text: remoteText)), port: remotePort)
         return .flowOpened(FlowEvent.FlowOpened(
             flowID: UUID(), process: process, pid: 9217, transport: .tcp,
-            local: local, remote: remote,
+            local: local, remote: remote, interface: "en0",
             startedAt: Date(timeIntervalSince1970: startedAt),
             bytesSent: 100, bytesReceived: 200))
     }

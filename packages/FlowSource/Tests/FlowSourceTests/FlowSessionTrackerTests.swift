@@ -198,4 +198,18 @@ import Testing
                                     identityForPID: { pid in identity(pid: pid) })
         #expect(events.count == 2)
     }
+
+    @Test func openedEventCarriesInterface() {
+        let tracker = FlowSessionTracker()
+        let row = NettopRow(processName: "curl", pid: 42, connID: nil, state: "Established",
+                            interface: "utun4", bytesIn: 100, bytesOut: 200,
+                            local: NetworkEndpoint(address: IPAddress(text: "192.168.1.5")!, port: 51234),
+                            remote: NetworkEndpoint(address: IPAddress(text: "8.8.8.8")!, port: 443),
+                            transport: .tcp)
+        let events = tracker.ingest([row], identityForPID: { _ in nil })
+        guard case .flowOpened(let opened) = events.first else {
+            Issue.record("no opened event"); return
+        }
+        #expect(opened.interface == "utun4")
+    }
 }

@@ -39,6 +39,7 @@ import Testing
         #expect(telegram.processName == "Telegram")
         #expect(telegram.bytesSent == 3400)
         #expect(telegram.bytesReceived == 1200)
+        #expect(telegram.interface == "en0")
         #expect(telegram.isActive)
     }
 

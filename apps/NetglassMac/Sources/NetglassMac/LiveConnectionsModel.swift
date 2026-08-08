@@ -205,6 +205,7 @@ public final class LiveConnectionsModel: ObservableObject {
                     bundleIdentifier: process.bundleIdentifier,
                     transport: opened.transport,
                     local: opened.local, remote: opened.remote,
+                    interface: opened.interface,
                     startedAt: opened.startedAt,
                     bytesSent: opened.bytesSent, bytesReceived: opened.bytesReceived,
                     isActive: true))
@@ -345,6 +346,7 @@ public struct LiveFlow: Identifiable, Equatable {
     public let transport: TransportProtocol
     public let local: NetworkEndpoint
     public let remote: NetworkEndpoint
+    public let interface: String
     public let startedAt: Date
     public var bytesSent: UInt64
     public var bytesReceived: UInt64

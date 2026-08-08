@@ -16,6 +16,7 @@ import Testing
             transport: .tcp,
             local: NetworkEndpoint(address: try #require(IPAddress(text: "192.168.1.42")), port: 51234),
             remote: NetworkEndpoint(address: try #require(IPAddress(text: remoteText)), port: 443),
+            interface: "en0",
             startedAt: Date(timeIntervalSince1970: 1_752_800_000),
             bytesSent: bytesSent, bytesReceived: bytesReceived,
             isActive: active, endedAt: nil,

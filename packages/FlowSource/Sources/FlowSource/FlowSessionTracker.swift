@@ -15,6 +15,7 @@ public final class FlowSessionTracker: @unchecked Sendable {
         var lastBytesSent: UInt64
         var lastBytesReceived: UInt64
         var executablePath: String?
+        var interface: String
         var misses: Int
         var lastSeenAt: Date
     }
@@ -69,6 +70,7 @@ public final class FlowSessionTracker: @unchecked Sendable {
                                                 lastBytesSent: session.lastBytesSent,
                                                 lastBytesReceived: session.lastBytesReceived,
                                                 executablePath: session.executablePath,
+                                                interface: session.interface,
                                                 misses: 0, lastSeenAt: session.lastSeenAt)
                     continue
                 }
@@ -86,6 +88,7 @@ public final class FlowSessionTracker: @unchecked Sendable {
                     events.append(.flowOpened(FlowEvent.FlowOpened(
                         flowID: fresh.flowID, process: identity, pid: pid,
                         transport: transport, local: local, remote: remote,
+                        interface: fresh.interface,
                         startedAt: currentTime,
                         bytesSent: fresh.lastBytesSent, bytesReceived: fresh.lastBytesReceived)))
                     continue
@@ -102,6 +105,7 @@ public final class FlowSessionTracker: @unchecked Sendable {
                     lastBytesSent: bytesOut,
                     lastBytesReceived: bytesIn,
                     executablePath: path,
+                    interface: session.interface,
                     misses: 0,
                     lastSeenAt: currentTime)
             } else {
@@ -111,6 +115,7 @@ public final class FlowSessionTracker: @unchecked Sendable {
                 events.append(.flowOpened(FlowEvent.FlowOpened(
                     flowID: fresh.flowID, process: identity, pid: pid,
                     transport: transport, local: local, remote: remote,
+                    interface: fresh.interface,
                     startedAt: currentTime,
                     bytesSent: fresh.lastBytesSent, bytesReceived: fresh.lastBytesReceived)))
             }
@@ -129,6 +134,7 @@ public final class FlowSessionTracker: @unchecked Sendable {
                                             lastBytesSent: session.lastBytesSent,
                                             lastBytesReceived: session.lastBytesReceived,
                                             executablePath: session.executablePath,
+                                            interface: session.interface,
                                             misses: misses,
                                             lastSeenAt: session.lastSeenAt)
             }
@@ -146,6 +152,7 @@ public final class FlowSessionTracker: @unchecked Sendable {
                              path: String?, row: NettopRow, at date: Date) -> FlowSession {
         FlowSession(flowID: UUID(), lastBytesSent: row.bytesOut ?? 0,
                     lastBytesReceived: row.bytesIn ?? 0,
-                    executablePath: path, misses: 0, lastSeenAt: date)
+                    executablePath: path, interface: row.interface ?? "",
+                    misses: 0, lastSeenAt: date)
     }
 }
