@@ -57,9 +57,10 @@ import Testing
         python3 4242 dan   10u  IPv4 0x1    0t0     0  TCP 0.0.0.0:8000 (LISTEN)
         sshd    999  root   3u  IPv6 0x2    0t0     0  TCP [::1]:2222 (LISTEN)
         python3 4242 dan   11u  IPv4 0x3    0t0     0  TCP 127.0.0.1:9000 (LISTEN)
+        rapportd 123  dan   12u  IPv4 0x4    0t0     0  TCP *:51560 (LISTEN)
         """
         let listeners = LsofParser().parseListeners(text)
-        #expect(listeners.count == 3)
+        #expect(listeners.count == 4)
         #expect(listeners[0].processName == "python3")
         #expect(listeners[0].pid == 4242)
         #expect(listeners[0].address == "0.0.0.0")
@@ -67,6 +68,10 @@ import Testing
         #expect(listeners[1].address == "::1")
         #expect(listeners[1].port == 2222)
         #expect(listeners[2].address == "127.0.0.1")
+        let rapportd = listeners.first { $0.processName == "rapportd" }
+        #expect(rapportd?.address == "*")
+        #expect(rapportd?.port == 51560)
+        #expect(rapportd?.exposure == .allInterfaces)
     }
 
     @Test func listenerExposure() {
@@ -75,6 +80,7 @@ import Testing
         }
         #expect(listener("0.0.0.0").exposure == .allInterfaces)
         #expect(listener("::").exposure == .allInterfaces)
+        #expect(listener("*").exposure == .allInterfaces)
         #expect(listener("127.0.0.1").exposure == .loopback)
         #expect(listener("::1").exposure == .loopback)
         #expect(listener("192.168.1.5").exposure == .specific)

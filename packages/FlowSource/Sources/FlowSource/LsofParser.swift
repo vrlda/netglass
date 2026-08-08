@@ -84,11 +84,15 @@ public struct LsofParser: Sendable {
             let transport: TransportProtocol = name.hasPrefix("TCP") ? .tcp : .udp
             let rest = String(name.drop(while: { $0 != " " }).dropFirst())
             let endpointToken = rest.split(separator: " ", maxSplits: 1).first.map(String.init) ?? rest
-            guard let parsed = Self.parseEndpoint(endpointToken) else { continue }
-            listeners.append(LsofListener(pid: pid, processName: processName,
-                                          transport: transport,
-                                          address: parsed.address.text,
-                                          port: parsed.port))
+            var listener: LsofListener?
+            if endpointToken.hasPrefix("*:"), let port = UInt16(endpointToken.dropFirst(2)) {
+                listener = LsofListener(pid: pid, processName: processName, transport: transport,
+                                        address: "*", port: port)
+            } else if let parsed = Self.parseEndpoint(endpointToken) {
+                listener = LsofListener(pid: pid, processName: processName, transport: transport,
+                                        address: parsed.address.text, port: parsed.port)
+            }
+            if let listener { listeners.append(listener) }
         }
         return listeners
     }
