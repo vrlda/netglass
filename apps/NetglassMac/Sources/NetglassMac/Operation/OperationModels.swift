@@ -240,6 +240,7 @@ public struct OperationSession: Codable, Equatable, Sendable {
     public var cleanupReport: CleanupReport?
     public var events: [OperationEvent]
     public var warnings: [LeakWarning]
+    public var periodic: [PeriodicPattern]
 
     public init(id: UUID = UUID(), name: String, startedAt: Date = Date(),
                 expectedTunnel: String, scope: OperationScope,
@@ -255,6 +256,7 @@ public struct OperationSession: Codable, Equatable, Sendable {
         self.cleanupReport = nil
         self.events = []
         self.warnings = []
+        self.periodic = []
     }
 }
 
@@ -301,6 +303,7 @@ public struct OperationBundle: Codable, Equatable, Sendable {
     public let warnings: [LeakWarning]
     public let events: [OperationEvent]
     public let cleanupReport: CleanupReport?
+    public let periodic: [PeriodicPattern]
 
     public init(operation: OperationSession, warnings: [LeakWarning],
                 events: [OperationEvent], snapshotIn: OperationSnapshot,
@@ -313,5 +316,6 @@ public struct OperationBundle: Codable, Equatable, Sendable {
         self.snapshotIn = snapshotIn
         self.snapshotOut = snapshotOut
         self.cleanupReport = cleanupReport
+        self.periodic = operation.periodic
     }
 }

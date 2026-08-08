@@ -118,13 +118,15 @@ struct OperationRunningView: View {
                 Text("Timeline").tag(0)
                 Text("Warnings").tag(1)
                 Text("Listeners").tag(2)
+                Text("Periodic").tag(3)
             }
             .pickerStyle(.segmented)
             .padding(8)
             switch selectedTab {
             case 0: timeline
             case 1: warnings
-            default: listeners
+            case 2: listeners
+            default: periodic
             }
         }
     }
@@ -250,6 +252,18 @@ struct OperationRunningView: View {
                 Text(listener.address).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                 Text(":\(listener.port)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                 Text(listener.exposure).font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private var periodic: some View {
+        List(operation.periodic) { pattern in
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(pattern.process) → \(pattern.destination)")
+                    .font(.system(size: 11, design: .monospaced))
+                Text("~\(Int(pattern.intervalSeconds.rounded())) s interval, jitter \(String(format: "%.1f", pattern.jitter * 100))%, avg \(ByteRate.string(pattern.averagePayloadBytes)), n=\(pattern.occurrences)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
             }
         }
     }

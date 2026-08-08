@@ -11,8 +11,10 @@ public final class OperationViewModel: ObservableObject {
     @Published public private(set) var warnings: [LeakWarning] = []
     @Published public private(set) var listeners: [ListeningPort] = []
     @Published public private(set) var currentResolvers: [ResolverConfig] = []
+    @Published public private(set) var periodic: [PeriodicPattern] = []
 
     private let engine = LeakRuleEngine()
+    private var beaconDetector = BeaconDetector()
     private let snapshotProvider: () -> OperationSnapshot
     private var listenerTimer: Timer?
     private var resolverTimer: Timer?
@@ -42,6 +44,20 @@ public final class OperationViewModel: ObservableObject {
     public func ingest(_ batch: [OperationEvent]) {
         guard var session else { return }
         session.events.append(contentsOf: batch)
+        let beacons = batch.compactMap { event -> BeaconObservation? in
+            guard case .connection(true, let date, let process, _, let remote, _, _, let bytes) = event
+            else { return nil }
+            return BeaconObservation(process: process,
+                                     destination: "\(remote.address.text):\(remote.port)",
+                                     date: date, bytes: bytes)
+        }
+        if !beacons.isEmpty {
+            let newPatterns = beaconDetector.ingest(beacons)
+            if !newPatterns.isEmpty {
+                session.periodic.append(contentsOf: newPatterns)
+                periodic = session.periodic
+            }
+        }
         let newWarnings = engine.evaluate(batch: batch, session: session,
                                           currentResolvers: currentResolvers, now: Date())
         if !newWarnings.isEmpty {
