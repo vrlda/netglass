@@ -6,8 +6,8 @@ import Testing
 
 @Suite struct OperationSessionTests {
     @Test func sessionAddsEventsAndWarnings() {
-        var session = OperationSession.make(name: "Op 1", expectedTunnel: "utun4",
-                                            scope: OperationScope(), snapshotIn: OperationSnapshot(date: Date()))
+        var session = OperationSession(name: "Op 1", expectedTunnel: "utun4",
+                                       scope: OperationScope(), snapshotIn: OperationSnapshot(date: Date()))
         let event = OperationEvent.connection(
             opened: true, date: Date(), process: "nmap", executablePath: "/usr/local/bin/nmap",
             remote: NetworkEndpoint(address: IPAddress(text: "10.20.30.1")!, port: 443),
@@ -36,7 +36,8 @@ import Testing
                                      address: "0.0.0.0", port: 8000)])
         let report = CleanupReport(snapshotIn: snapshotIn, snapshotOut: snapshotOut,
                                    liveFlows: [], endedAt: snapshotOut.date)
-        #expect(report.listenersStillOpen == ["python3:0.0.0.0:8000"])
+        #expect(report.newListenersAtEnd == ["python3:0.0.0.0:8000"])
         #expect(report.resolverChanged)
+        #expect(report.endedAt == snapshotOut.date)
     }
 }

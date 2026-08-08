@@ -208,27 +208,22 @@ public struct OperationSession: Codable, Equatable, Sendable {
         self.events = []
         self.warnings = []
     }
-
-    public static func make(name: String, expectedTunnel: String,
-                            scope: OperationScope, snapshotIn: OperationSnapshot) -> OperationSession {
-        OperationSession(name: name, expectedTunnel: expectedTunnel,
-                         scope: scope, snapshotIn: snapshotIn)
-    }
 }
 
 // MARK: - Cleanup report
 
 public struct CleanupReport: Codable, Equatable, Sendable {
     public let activeProcessPaths: [String]
-    public let listenersStillOpen: [String]
+    public let newListenersAtEnd: [String]
     public let activeConnectionCount: Int
     public let resolverChanged: Bool
     public let defaultRouteChanged: Bool
+    public let endedAt: Date
 
     public init(snapshotIn: OperationSnapshot, snapshotOut: OperationSnapshot,
                 liveFlows: [LiveFlow], endedAt: Date) {
         self.activeProcessPaths = Array(Set(liveFlows.map(\.executablePath))).sorted()
-        self.listenersStillOpen = snapshotOut.listeners
+        self.newListenersAtEnd = snapshotOut.listeners
             .filter { listener in
                 guard listener.pid != 0 else { return false }
                 return !snapshotIn.listeners.contains {
@@ -243,6 +238,7 @@ public struct CleanupReport: Codable, Equatable, Sendable {
         self.resolverChanged = snapshotIn.resolvers != snapshotOut.resolvers
         self.defaultRouteChanged = snapshotIn.defaultRouteInterface != snapshotOut.defaultRouteInterface
             && !snapshotOut.defaultRouteInterface.isEmpty
+        self.endedAt = endedAt
     }
 }
 
