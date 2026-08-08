@@ -258,7 +258,7 @@ public struct OperationBundle: Codable, Equatable, Sendable {
                 events: [OperationEvent], snapshotIn: OperationSnapshot,
                 snapshotOut: OperationSnapshot?, cleanupReport: CleanupReport?) {
         self.app = "Netglass"
-        self.version = "1.0.0"
+        self.version = "1.1.0"
         self.operation = operation
         self.warnings = warnings
         self.events = events
